@@ -101,6 +101,8 @@ if __name__ == '__main__':
     for extension in extensions:
         list.extend(glob.glob(dirname + "/"+extension))
 
+    list.sort()  # da bo po abecedi
+
     for filename in list:
 
         # read image

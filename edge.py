@@ -2,7 +2,9 @@ import cv2
 import argparse
 import numpy as np
 import glob
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
+from skimage.transform import hough_circle, hough_circle_peaks
+import sys
 
 
 def show_image(img, title=""):
@@ -10,8 +12,11 @@ def show_image(img, title=""):
     cv2.resizeWindow(title, 1280, 720)
 
     cv2.imshow(title, img)
-    cv2.waitKey(0)
+    key = cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+    if key == 27:
+        sys.exit()
 
 
 # https://stackoverflow.com/a/45196250
@@ -40,7 +45,7 @@ def auto_canny_threshold_otsu(image):
 
 
 # https://docs.opencv.org/2.4/modules/imgproc/doc/feature_detection.html?highlight=houghcircles
-def getCircles(gray_img):
+def getCircles_old(gray_img):
     # predn gremo po kroge, zmanjšamo rezolucijo
     # print("orig size= " + str(gray_img.shape))
 
@@ -76,6 +81,30 @@ def getCircles(gray_img):
 
     # print(str(circles))
     return circles
+
+
+# http://scikit-image.org/docs/stable/api/skimage.transform.html#hough-circle
+# http://scikit-image.org/docs/dev/api/skimage.transform.html#hough-circle-peaks
+def getCircles(edge_img):
+    # predn gremo po kroge, zmanjšamo rezolucijo
+    # naj bo pod 1000xNekaj
+    faktor = 1
+    if max(edge_img.shape) > 1000:
+        faktor = 1 / (max(edge_img.shape) // 500)
+    small = cv2.resize(edge_img, (0, 0), fx=faktor, fy=faktor)
+
+    # circels
+    radii = np.arange(5, 30, 1)
+    res = hough_circle(small, radii, normalize=False, full_output=False)
+    accums, cx, cy, rad = hough_circle_peaks(res, radii, min_xdistance=30, min_ydistance=30, threshold=20, num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
+
+    # skaliraj nazaj
+    f = int(1 / faktor)
+    cx = cx * f
+    cy = cy * f
+    rad = rad * f
+    return accums, cx, cy, rad
+
 
 if __name__ == '__main__':
     # main here
@@ -170,15 +199,17 @@ if __name__ == '__main__':
         #
         #
         #
-        # 1
+        #
         # probamo še Houghcircles
-        circles = getCircles(gray_img)
+        accums, cx, cy, radii = getCircles(edges)
+
+        print(str(accums))
 
         # draw circles
         image_with_circles = img
-        for circle in circles[0]:
+        for a, x, y, r in zip(accums, cx, cy, radii):
             # print(str(circle))
-            cv2.circle(image_with_circles, (circle[0], circle[1]), circle[2], (255, 0, 0), 8, cv2.LINE_AA)
+            cv2.circle(image_with_circles, (x, y), r, (255, 0, 0), 8, cv2.LINE_AA)
 
         show_image(image_with_circles, "circles nad Canny od gray")
 

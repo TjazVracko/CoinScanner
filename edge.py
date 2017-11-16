@@ -4,7 +4,11 @@ import numpy as np
 import glob
 # from matplotlib import pyplot as plt
 from skimage.transform import hough_circle, hough_circle_peaks
+from skimage import img_as_float
 import sys
+import copy
+
+np.set_printoptions(threshold=np.nan)
 
 
 def show_image(img, title=""):
@@ -28,8 +32,8 @@ def auto_canny_threshold(image, sigma=0.33):
     # calculate lower and upper bou
     # lower = int(max(0, (1.0 - sigma) * v))
     upper = int(min(255, (1.0 + sigma) * v))
-    lower = upper // 2
-    print("lower=" + str(lower) + "  upper=" + str(upper))
+    lower = int(max(0, upper // 2))
+    # print("madian= " + str(v) + "  lower=" + str(lower) + "  upper=" + str(upper))
 
     return lower, upper
 
@@ -45,7 +49,7 @@ def auto_canny_threshold_otsu(image):
 
 
 # https://docs.opencv.org/2.4/modules/imgproc/doc/feature_detection.html?highlight=houghcircles
-def getCircles_old(gray_img):
+def get_circles_old(gray_img):
     # predn gremo po kroge, zmanjšamo rezolucijo
     # print("orig size= " + str(gray_img.shape))
 
@@ -76,16 +80,14 @@ def getCircles_old(gray_img):
 
     # kroge skaliramo nazaj
     f = int(1 / faktor)
-    for index, circle in enumerate(circles[0]):
-        circles[0][index] *= f
-
+    circles[0] *= f
     # print(str(circles))
     return circles
 
 
 # http://scikit-image.org/docs/stable/api/skimage.transform.html#hough-circle
 # http://scikit-image.org/docs/dev/api/skimage.transform.html#hough-circle-peaks
-def getCircles(edge_img):
+def get_circles(edge_img):
     # predn gremo po kroge, zmanjšamo rezolucijo
     # naj bo pod 1000xNekaj
     faktor = 1
@@ -93,17 +95,47 @@ def getCircles(edge_img):
         faktor = 1 / (max(edge_img.shape) // 500)
     small = cv2.resize(edge_img, (0, 0), fx=faktor, fy=faktor)
 
+    small = img_as_float(small)
     # circels
-    radii = np.arange(5, 30, 1)
+    radii = np.arange(10, 25, 1)
     res = hough_circle(small, radii, normalize=False, full_output=False)
     accums, cx, cy, rad = hough_circle_peaks(res, radii, min_xdistance=30, min_ydistance=30, threshold=20, num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
+
+    # '''test'''
+    # for a, x, y, r in zip(accums, cx, cy, rad):
+    #     # print(str(circle))
+    #     cv2.circle(small, (x, y), r, (255, 0, 0), 1, cv2.LINE_AA)
+    # show_image(small, 'small test image')
+    # '''test'''
 
     # skaliraj nazaj
     f = int(1 / faktor)
     cx = cx * f
     cy = cy * f
     rad = rad * f
-    return accums, cx, cy, rad
+
+    meja = 70**2
+    circles = list(zip(accums, cx, cy, rad))
+    proc = []
+    for i in range(len(circles)):
+        for j in range(i + 1, len(circles)):
+            if (circles[i][1] - circles[j][1])**2 + (circles[i][2] - circles[j][2])**2 < meja:  # če sta dovolj blizu
+                if circles[i][0] < circles[j][0]:
+                    proc.append(i)
+                else:
+                    proc.append(j)
+
+    proc = np.unique(np.array(proc))
+    proc = np.sort(proc)
+    proc = proc[::-1]  # reverse list
+    # print("PROC: " + str(proc))
+
+    for ix in proc:
+        del circles[ix]
+
+    print("circles: " + str(circles))
+
+    return circles
 
 
 if __name__ == '__main__':
@@ -111,28 +143,19 @@ if __name__ == '__main__':
     # parse input
     parser = argparse.ArgumentParser(description='Edge detector')
     parser.add_argument('-i', '--images', required=True, help='Path to images (directory)')
-    parser.add_argument('-t1', help='Threshold 1 for Canny edge', type=int)
-    parser.add_argument('-t2', help='Threshold 2 for Canny edge', type=int)
 
     args = parser.parse_args()
 
     dirname = args.images
-    threshold1 = args.t1
-    threshold2 = args.t2
-    auto = False
-
-    if threshold1 is None or threshold2 is None:
-        auto = True
 
     # loop over all images
     extensions = ("*.pgn", "*.jpg", "*.jpeg", "*.JPG")
-    list = []
+    list_e = []
     for extension in extensions:
-        list.extend(glob.glob(dirname + "/"+extension))
+        list_e.extend(glob.glob(dirname + "/"+extension))
+    list_e.sort()  # da bo po abecedi
 
-    list.sort()  # da bo po abecedi
-
-    for filename in list:
+    for filename in list_e:
 
         # read image
         img = cv2.imread(filename)
@@ -143,75 +166,123 @@ if __name__ == '__main__':
         # predpriprava
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # show_image(gray_img)
+        # show_image(gray_img, 'grayscale')
 
-        # poglejmo si thresholding
-        # histogram:
-        # plt.hist(gray_img.ravel(), 256, [0, 256])
-        # plt.show()
+        # preverimo druge barvne modele
+        # rgb_b = img[:, :, 0]
+        # rgb_g = img[:, :, 1]
+        # rgb_r = img[:, :, 2]
+        rgb_b, rgb_g, rgb_r = cv2.split(img)
 
-        # blur = cv2.GaussianBlur(gray_img, (5, 5), 0)
+        # show_image(rgb_r, 'r')
+        # show_image(rgb_g, 'g')
+        # show_image(rgb_b, 'b')
 
-        # plt.hist(blur.ravel(), 256, [0, 256])
-        # plt.show()
+        lab_img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+        lab_l, lab_a, lab_b = cv2.split(lab_img)
 
-        # otsu
-        # threshold, binarizirana = cv2.threshold(gray_img, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        # print("otsu thresh: " + str(threshold))
+        # show_image(lab_l, 'l')
+        # show_image(lab_a, 'a')
+        # show_image(lab_b, 'b')
 
-        # show_image(binarizirana, 'otsu')
+        # cv2.imwrite('lab_a.png', lab_a)
+        # cv2.imwrite('lab_b.png', lab_b)
 
-        # adaptive
-        # adaptive = cv2.adaptiveThreshold(gray_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 13, 2)
-        # show_image(adaptive, 'adaptive gaussian')
+        # eqalizajmo histograme
 
-        adaptive2 = cv2.adaptiveThreshold(gray_img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 13, 2)
-        show_image(adaptive2, 'adaptive normal')
+        # lab_a_eq = cv2.equalizeHist(lab_a)
+        # lab_b_eq = cv2.equalizeHist(lab_b)
 
-        # odpiranje, da gre šum proč
-        kernel = np.ones((5, 5), np.uint8)
-        opened = cv2.morphologyEx(adaptive2, cv2.MORPH_OPEN, kernel)
+        # show_image(lab_a_eq, 'a equalized')
+        # show_image(lab_b_eq, 'b equalized')
 
-        show_image(opened, 'open od adaptive normal')
+        luv_img = cv2.cvtColor(img, cv2.COLOR_BGR2LUV)
+        luv_l, luv_u, luv_v = cv2.split(luv_img)
 
-        blured = cv2.medianBlur(adaptive2, 9)
-        show_image(blured, 'medianBlur 9x9 od adaptive normal')
+        # show_image(luv_l, 'l')
+        # show_image(luv_u, 'u')
+        # show_image(luv_v, 'v')
 
         # canny edge
         # cv2.Canny(image, threshold1, threshold2[, edges[, apertureSize[, L2gradient]]]) → edges
-        if auto:
-            threshold1, threshold2 = auto_canny_threshold(gray_img)
-            # threshold1, threshold2 = auto_canny_threshold_otsu(gray_img)
 
-        edges = cv2.Canny(gray_img, threshold1, threshold2)
-        show_image(edges, 'Canny nad grayscale od originala')
+        threshold1, threshold2 = auto_canny_threshold(gray_img)
+        # threshold1, threshold2 = auto_canny_threshold_otsu(gray_img)
 
-        threshold1, threshold2 = auto_canny_threshold(opened)
+        gray_edges = cv2.Canny(gray_img, threshold1, threshold2)
+        # show_image(gray_edges, 'Canny nad grayscale')
 
-        edges_open = cv2.Canny(opened, threshold1, threshold2)
-        show_image(edges_open, 'Canny nad opened sliko')
+        # luv_u
+        threshold1, threshold2 = auto_canny_threshold(luv_u, sigma=-0.75)
+        luv_u_edges = cv2.Canny(luv_u, threshold1, threshold2)
+        # show_image(luv_u_edges, 'luv u edges')
 
-        threshold1, threshold2 = auto_canny_threshold(blured)
+        # luv_v
+        threshold1, threshold2 = auto_canny_threshold(luv_v, sigma=-0.75)
+        luv_v_edges = cv2.Canny(luv_u, threshold1, threshold2)
+        # show_image(luv_v_edges, 'luv v edges')
 
-        edges_blur = cv2.Canny(blured, threshold1, threshold2)
-        show_image(edges_blur, 'Canny nad median blur')
+        m = cv2.merge((gray_edges, luv_u_edges, luv_v_edges))  # samo za pokazat
+        show_image(m, 'blue=gray_edges, green=luv u, red=luv v')
+
+        merged_edges = cv2.add(cv2.add(gray_edges, luv_u_edges), luv_v_edges)  # skrbi za overflow
+
+        # show_image(np.hstack((lab_a_edges, lab_b_edges, ab_edges)))
+
+        # threshold1, threshold2 = auto_canny_threshold(opened)
+
+        # edges_open = cv2.Canny(opened, threshold1, threshold2)
+        # show_image(edges_open, 'Canny nad opened sliko')
+
+        # threshold1, threshold2 = auto_canny_threshold(blured)
+
+        # edges_blur = cv2.Canny(blured, threshold1, threshold2)
+        # show_image(edges_blur, 'Canny nad median blur')
 
         #
         #
         #
         #
         # probamo še Houghcircles
-        accums, cx, cy, radii = getCircles(edges)
+        circles = get_circles(merged_edges)  # accumulator_value, x_coord, y_coord, radius
 
-        print(str(accums))
+        # print(str(accums))
 
         # draw circles
-        image_with_circles = img
-        for a, x, y, r in zip(accums, cx, cy, radii):
+        image_with_circles = copy.copy(img)  # kopija
+        for a, x, y, r in circles:
             # print(str(circle))
             cv2.circle(image_with_circles, (x, y), r, (255, 0, 0), 8, cv2.LINE_AA)
+            # cv2.putText(image_with_circles, str(a), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0))
 
-        show_image(image_with_circles, "circles nad Canny od gray")
+        # print(str(accums))
+        show_image(image_with_circles, "circles")
+
+        # # print("PROC: " + str(proc))
+
+        # for a, x, y, r in circles:
+        #     cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
+        #     cv2.circle(image_with_circles, (x, y), 5, (0, 0, 255), 5, cv2.LINE_4)
+
+        # show_image(image_with_circles, "blue = all, red = selected")
+
+        # # true image
+        # image_with_circles_true = copy.copy(img)
+        # for a, x, y, r in circles:
+        #     cv2.circle(image_with_circles_true, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
+        #     cv2.circle(image_with_circles_true, (x, y), 5, (0, 0, 255), 5, cv2.LINE_4)
+
+        # show_image(image_with_circles_true, "only red cirles")
+
+        # # stara metoda
+        # circles = get_circles_old(cv2.add(merged_edges, gray_img))
+        # # draw circles
+        # image_with_circles2 = img
+        # for circle in circles[0]:
+        #     # print(str(circle))
+        #     cv2.circle(image_with_circles, (circle[0], circle[1]), circle[2], (255, 0, 0), 8, cv2.LINE_AA)
+
+        # show_image(image_with_circles2, "circles old method")
 
         # 2
 

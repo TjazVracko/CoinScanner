@@ -97,7 +97,7 @@ def get_circles(edge_img):
 
     small = img_as_float(small)
     # circels
-    radii = np.arange(10, 25, 1)
+    radii = np.arange(10, 25, 1)  # TODO: max in min radij sta odvisa od tega kak daleč je kamera od kovancev. Bi se dalo to nekak ugotovit??? Da nimamo hardcoded vrednosti
     res = hough_circle(small, radii, normalize=False, full_output=False)
     accums, cx, cy, rad = hough_circle_peaks(res, radii, min_xdistance=30, min_ydistance=30, threshold=20, num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
 
@@ -114,6 +114,7 @@ def get_circles(edge_img):
     cy = cy * f
     rad = rad * f
 
+    # izločimo bližnje kroge
     meja = 70**2
     circles = list(zip(accums, cx, cy, rad))
     all_circles = copy.copy(circles)
@@ -167,42 +168,8 @@ if __name__ == '__main__':
         # predpriprava
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # show_image(gray_img, 'grayscale')
-
-        # preverimo druge barvne modele
-        # rgb_b = img[:, :, 0]
-        # rgb_g = img[:, :, 1]
-        # rgb_r = img[:, :, 2]
-        rgb_b, rgb_g, rgb_r = cv2.split(img)
-
-        # show_image(rgb_r, 'r')
-        # show_image(rgb_g, 'g')
-        # show_image(rgb_b, 'b')
-
-        lab_img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-        lab_l, lab_a, lab_b = cv2.split(lab_img)
-
-        # show_image(lab_l, 'l')
-        # show_image(lab_a, 'a')
-        # show_image(lab_b, 'b')
-
-        # cv2.imwrite('lab_a.png', lab_a)
-        # cv2.imwrite('lab_b.png', lab_b)
-
-        # eqalizajmo histograme
-
-        # lab_a_eq = cv2.equalizeHist(lab_a)
-        # lab_b_eq = cv2.equalizeHist(lab_b)
-
-        # show_image(lab_a_eq, 'a equalized')
-        # show_image(lab_b_eq, 'b equalized')
-
         luv_img = cv2.cvtColor(img, cv2.COLOR_BGR2LUV)
         luv_l, luv_u, luv_v = cv2.split(luv_img)
-
-        # show_image(luv_l, 'l')
-        # show_image(luv_u, 'u')
-        # show_image(luv_v, 'v')
 
         # canny edge
         # cv2.Canny(image, threshold1, threshold2[, edges[, apertureSize[, L2gradient]]]) → edges
@@ -228,22 +195,6 @@ if __name__ == '__main__':
 
         merged_edges = cv2.add(cv2.add(gray_edges, luv_u_edges), luv_v_edges)  # skrbi za overflow
 
-        # show_image(np.hstack((lab_a_edges, lab_b_edges, ab_edges)))
-
-        # threshold1, threshold2 = auto_canny_threshold(opened)
-
-        # edges_open = cv2.Canny(opened, threshold1, threshold2)
-        # show_image(edges_open, 'Canny nad opened sliko')
-
-        # threshold1, threshold2 = auto_canny_threshold(blured)
-
-        # edges_blur = cv2.Canny(blured, threshold1, threshold2)
-        # show_image(edges_blur, 'Canny nad median blur')
-
-        #
-        #
-        #
-        #
         # probamo še Hough circles
         circles, all_circles = get_circles(merged_edges)  # accumulator_value, x_coord, y_coord, radius (circles so najboljši iz okolice, all_circles so vsi)
 
@@ -267,8 +218,8 @@ if __name__ == '__main__':
             # okoli kovanca naj bo črno
             n = 2 * r
             ym, xm = np.ogrid[-r:n-r, -r:n-r]
-            mask = xm**2 + ym**2 <= r**2
-            c[~mask] = 0
+            mask = xm**2 + ym**2 > r**2
+            c[mask] = 0
             # resize na 200x200 ??? samo zgubimo relative size s tem
             c = cv2.resize(c, (200, 200))
             potential_coins.append((r, c))
@@ -277,4 +228,4 @@ if __name__ == '__main__':
         for r, pc in potential_coins:
             show_image(pc, "pc: " + str(r))
 
-        # v enem članku je blo o tem kak preverijo neko odstoanje povprečne barve al nekaj, da se izločijo krogi brez kovancev
+        # v enem članku je blo o tem kak preverijo neko odstopanje od povprečne barve al nekaj, da se izločijo krogi brez kovancev

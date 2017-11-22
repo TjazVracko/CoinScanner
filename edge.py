@@ -116,11 +116,12 @@ def get_circles(edge_img):
 
     meja = 70**2
     circles = list(zip(accums, cx, cy, rad))
+    all_circles = copy.copy(circles)
     proc = []
     for i in range(len(circles)):
         for j in range(i + 1, len(circles)):
             if (circles[i][1] - circles[j][1])**2 + (circles[i][2] - circles[j][2])**2 < meja:  # če sta dovolj blizu
-                if circles[i][0] < circles[j][0]:
+                if circles[i][0] < circles[j][0]:  # izločimo onega z manjšim akumulatorjem
                     proc.append(i)
                 else:
                     proc.append(j)
@@ -135,7 +136,7 @@ def get_circles(edge_img):
 
     print("circles: " + str(circles))
 
-    return circles
+    return circles, all_circles
 
 
 if __name__ == '__main__':
@@ -243,67 +244,37 @@ if __name__ == '__main__':
         #
         #
         #
-        # probamo še Houghcircles
-        circles = get_circles(merged_edges)  # accumulator_value, x_coord, y_coord, radius
+        # probamo še Hough circles
+        circles, all_circles = get_circles(merged_edges)  # accumulator_value, x_coord, y_coord, radius (circles so najboljši iz okolice, all_circles so vsi)
 
         # print(str(accums))
 
         # draw circles
         image_with_circles = copy.copy(img)  # kopija
-        for a, x, y, r in circles:
+        for a, x, y, r in all_circles:
             # print(str(circle))
             cv2.circle(image_with_circles, (x, y), r, (255, 0, 0), 8, cv2.LINE_AA)
             # cv2.putText(image_with_circles, str(a), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0))
-
+        for a, x, y, r in circles:
+            cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
         # print(str(accums))
         show_image(image_with_circles, "circles")
 
-        # # print("PROC: " + str(proc))
+        # izrežemo vsak krog v svojo sliko
+        potential_coins = []
+        for a, x, y, r in circles:
+            c = img[y - r:y + r, x - r:x + r, :].copy()
+            # okoli kovanca naj bo črno
+            n = 2 * r
+            ym, xm = np.ogrid[-r:n-r, -r:n-r]
+            mask = xm**2 + ym**2 <= r**2
+            c[~mask] = 0
+            # resize na 200x200 ??? samo zgubimo relative size s tem
+            c = cv2.resize(c, (200, 200))
+            potential_coins.append((r, c))
 
-        # for a, x, y, r in circles:
-        #     cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
-        #     cv2.circle(image_with_circles, (x, y), 5, (0, 0, 255), 5, cv2.LINE_4)
+        print("PC len: " + str(len(potential_coins)) + "CIRC len: " + str(len(circles)))
+        for r, pc in potential_coins:
+            show_image(pc, "pc: " + str(r))
 
-        # show_image(image_with_circles, "blue = all, red = selected")
-
-        # # true image
-        # image_with_circles_true = copy.copy(img)
-        # for a, x, y, r in circles:
-        #     cv2.circle(image_with_circles_true, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
-        #     cv2.circle(image_with_circles_true, (x, y), 5, (0, 0, 255), 5, cv2.LINE_4)
-
-        # show_image(image_with_circles_true, "only red cirles")
-
-        # # stara metoda
-        # circles = get_circles_old(cv2.add(merged_edges, gray_img))
-        # # draw circles
-        # image_with_circles2 = img
-        # for circle in circles[0]:
-        #     # print(str(circle))
-        #     cv2.circle(image_with_circles, (circle[0], circle[1]), circle[2], (255, 0, 0), 8, cv2.LINE_AA)
-
-        # show_image(image_with_circles2, "circles old method")
-
-        # 2
-
-        # circles = getCircles(edges_open)
-
-        # # draw circles
-        # image_with_circles = img
-        # for circle in circles[0]:
-        #     # print(str(circle))
-        #     cv2.circle(image_with_circles, (circle[0], circle[1]), circle[2], (255, 0, 0), 8, cv2.LINE_AA)
-
-        # show_image(image_with_circles, "circles nad Canny od opened")
-
-        # # 3
-
-        # circles = getCircles(edges_blur)
-
-        # # draw circles
-        # image_with_circles = img
-        # for circle in circles[0]:
-        #     # print(str(circle))
-        #     cv2.circle(image_with_circles, (circle[0], circle[1]), circle[2], (255, 0, 0), 8, cv2.LINE_AA)
-
-        # show_image(image_with_circles, "circles nad Canny od median blur")
+        # v enem članku je blo o tem kak preverijo neko odstoanje povprečne barve al nekaj, da se izločijo krogi brez kovancev

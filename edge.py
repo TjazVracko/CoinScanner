@@ -97,7 +97,7 @@ def get_circles(edge_img):
 
     small = img_as_float(small)
     # circels
-    radii = np.arange(10, 25, 1)  # TODO: max in min radij sta odvisa od tega kak daleč je kamera od kovancev. Bi se dalo to nekak ugotovit??? Da nimamo hardcoded vrednosti
+    radii = np.arange(10, 50, 1)  # TODO: max in min radij sta odvisa od tega kak daleč je kamera od kovancev. Bi se dalo to nekak ugotovit??? Da nimamo hardcoded vrednosti
     res = hough_circle(small, radii, normalize=False, full_output=False)
     accums, cx, cy, rad = hough_circle_peaks(res, radii, min_xdistance=30, min_ydistance=30, threshold=20, num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
 
@@ -135,7 +135,7 @@ def get_circles(edge_img):
     for ix in proc:
         del circles[ix]
 
-    print("circles: " + str(circles))
+    # print("circles: " + str(circles))
 
     return circles, all_circles
 
@@ -212,20 +212,36 @@ if __name__ == '__main__':
         show_image(image_with_circles, "circles")
 
         # izrežemo vsak krog v svojo sliko
+        NEW_SIZE = 200
         potential_coins = []
         for a, x, y, r in circles:
             c = img[y - r:y + r, x - r:x + r, :].copy()
             # okoli kovanca naj bo črno
-            n = 2 * r
-            ym, xm = np.ogrid[-r:n-r, -r:n-r]
+            ym, xm = np.ogrid[-r:r, -r:r]
             mask = xm**2 + ym**2 > r**2
+            if c.shape[0] != mask.shape[0]:
+                continue
             c[mask] = 0
             # resize na 200x200 ??? samo zgubimo relative size s tem
-            c = cv2.resize(c, (200, 200))
-            potential_coins.append((r, c))
+            c = cv2.resize(c, (NEW_SIZE, NEW_SIZE))
+            potential_coins.append((a, x, y, r, c))
 
-        print("PC len: " + str(len(potential_coins)) + "CIRC len: " + str(len(circles)))
-        for r, pc in potential_coins:
-            show_image(pc, "pc: " + str(r))
+        # for r, a, pc in potential_coins:
+        #     show_image(pc, "rad: " + str(r) + " acum: " + str(a))
 
-        # v enem članku je blo o tem kak preverijo neko odstopanje od povprečne barve al nekaj, da se izločijo krogi brez kovancev
+        # dobimo kroge. Na večini so konvanci, na nekaterih je več kovancev, nekateri so le del kovanca, ponavadi znotraj drugega kroga.
+        # izločimo najprej tiste z več kovanci, glede na razlike v barvah čez krog - standardna deviacija
+        r = NEW_SIZE / 2
+        ym, xm = np.ogrid[-r:r, -r:r]
+        mask = xm**2 + ym**2 > r**2  # ta maska definira krog
+        mask = np.dstack((mask, mask, mask))
+        # print(str(mask.shape))
+        for a, x, y, r, pc in potential_coins:
+            coin = np.ma.array(pc, mask=mask)
+            avg_color = coin.mean(axis=(0, 1))
+            print("avg color: " + str(avg_color))
+            std_dev = coin.std(axis=(0, 1))
+            print("std dev: " + str(std_dev))
+
+            # testiramo če odklon ustreza
+            show_image(coin, "test")

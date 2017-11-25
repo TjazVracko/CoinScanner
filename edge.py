@@ -48,7 +48,7 @@ def auto_canny_threshold_otsu(image):
     return ret*0.45, ret
 
 
-# https://docs.opencv.org/2.4/modules/imgproc/doc/feature_detection.html?highlight=houghcircles
+# https://docs.opencv.org/2.4/modules/imgto_remove/doc/feature_detection.html?highlight=houghcircles
 def get_circles_old(gray_img):
     # predn gremo po kroge, zmanjšamo rezolucijo
     # print("orig size= " + str(gray_img.shape))
@@ -98,8 +98,9 @@ def get_circles(edge_img):
     small = img_as_float(small)
     # circels
     radii = np.arange(10, 50, 1)  # TODO: max in min radij sta odvisa od tega kak daleč je kamera od kovancev. Bi se dalo to nekak ugotovit??? Da nimamo hardcoded vrednosti
-    res = hough_circle(small, radii, normalize=False, full_output=False)
-    accums, cx, cy, rad = hough_circle_peaks(res, radii, min_xdistance=30, min_ydistance=30, threshold=20, num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
+    hspace = hough_circle(small, radii, normalize=False, full_output=False)
+    # threshold: Minimum intensity of peaks in each Hough space. Default is (0.5 * np.amax(hspace)).
+    accums, cx, cy, rad = hough_circle_peaks(hspace, radii, min_xdistance=30, min_ydistance=30, threshold=(0.4 * np.amax(hspace)), num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
 
     # '''test'''
     # for a, x, y, r in zip(accums, cx, cy, rad):
@@ -115,26 +116,26 @@ def get_circles(edge_img):
     rad = rad * f
 
     # izločimo bližnje kroge
-    meja = 70**2
+    # meja = 70**2
     circles = list(zip(accums, cx, cy, rad))
     all_circles = copy.copy(circles)
-    proc = []
+    to_remove = []
+    meja = 70**2
     for i in range(len(circles)):
+        # meja = (circles[i][3] - 10)**2  # meja je malo manj kot radius - torej prečekiramo vse bližnje kroge glede na krog
         for j in range(i + 1, len(circles)):
             if (circles[i][1] - circles[j][1])**2 + (circles[i][2] - circles[j][2])**2 < meja:  # če sta dovolj blizu
                 if circles[i][0] < circles[j][0]:  # izločimo onega z manjšim akumulatorjem
-                    proc.append(i)
+                    to_remove.append(i)
                 else:
-                    proc.append(j)
+                    to_remove.append(j)
 
-    proc = np.unique(np.array(proc))
-    proc = np.sort(proc)
-    proc = proc[::-1]  # reverse list
-    # print("PROC: " + str(proc))
+    to_remove = np.unique(np.array(to_remove))
+    to_remove = np.sort(to_remove)
+    to_remove = to_remove[::-1]  # reverse list
 
-    for ix in proc:
+    for ix in to_remove:
         del circles[ix]
-
     # print("circles: " + str(circles))
 
     return circles, all_circles
@@ -209,7 +210,18 @@ if __name__ == '__main__':
         for a, x, y, r in circles:
             cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
         # print(str(accums))
-        show_image(image_with_circles, "circles")
+        show_image(image_with_circles, "all circles")
+
+        #
+        #
+        #
+        #
+        # nekateri krogi so slabi, jih izločimo:
+        #
+        #
+        # dobimo kroge. Na večini so konvanci, na nekaterih je več kovancev, nekateri so le del kovanca, ponavadi znotraj drugega kroga.
+        # krog z največjim akumulatorjem je ponavadi kovanec, razn če je ozadje ful neka slika(ampak s tem se ne ubadamo)
+        # izločimo vse kroge, ki so za nek faktor večjo od tega "ziher" kovanca
 
         # izrežemo vsak krog v svojo sliko
         NEW_SIZE = 200
@@ -219,29 +231,90 @@ if __name__ == '__main__':
             # okoli kovanca naj bo črno
             ym, xm = np.ogrid[-r:r, -r:r]
             mask = xm**2 + ym**2 > r**2
-            if c.shape[0] != mask.shape[0]:
+            if c.shape[0] != mask.shape[0] or c.shape[1] != mask.shape[1]:
                 continue
             c[mask] = 0
             # resize na 200x200 ??? samo zgubimo relative size s tem
             c = cv2.resize(c, (NEW_SIZE, NEW_SIZE))
             potential_coins.append((a, x, y, r, c))
 
-        # for r, a, pc in potential_coins:
-        #     show_image(pc, "rad: " + str(r) + " acum: " + str(a))
-
-        # dobimo kroge. Na večini so konvanci, na nekaterih je več kovancev, nekateri so le del kovanca, ponavadi znotraj drugega kroga.
-        # izločimo najprej tiste z več kovanci, glede na razlike v barvah čez krog - standardna deviacija
+        # izločimo tiste z več kovanci,
+        to_remove = []
+        # glede na radius
+        SIZE_FACTOR = 1.7
+        size_limit = SIZE_FACTOR * potential_coins[0][3]
+        # glede na razlike v barvah čez krog - standardna deviacija
+        # TODO: 1€ in še posebej 2€ imata večjo standardno deviacijo od ostatih kovancev, zato jo sodaj definirana meja včasih izvrže, to je slabo - how to fix???
         r = NEW_SIZE / 2
         ym, xm = np.ogrid[-r:r, -r:r]
-        mask = xm**2 + ym**2 > r**2  # ta maska definira krog
-        mask = np.dstack((mask, mask, mask))
-        # print(str(mask.shape))
-        for a, x, y, r, pc in potential_coins:
-            coin = np.ma.array(pc, mask=mask)
-            avg_color = coin.mean(axis=(0, 1))
-            print("avg color: " + str(avg_color))
-            std_dev = coin.std(axis=(0, 1))
-            print("std dev: " + str(std_dev))
-
+        coin_mask = xm**2 + ym**2 > r**2  # ta maska definira krog (oziroma elemente zunaj kroga (manj nek rob) na kvadratu, saj teh ne upoštevamo)
+        coin_mask = np.dstack((coin_mask, coin_mask, coin_mask))
+        # print(str(coin_mask.shape))
+        for i, pc in enumerate(potential_coins):
+            # radius
+            if pc[3] >= size_limit:
+                to_remove.append(i)
+                continue  # skip other part
+            coin = np.ma.array(pc[4], mask=coin_mask)
+            # avg_color = coin.mean(axis=(0, 1))
+            std_dev = coin.std(axis=(0, 1))  # vrne deviacijo za r g b posebej : (std_b, std_g, std_r)
             # testiramo če odklon ustreza
-            show_image(coin, "test")
+            # preveliki odklon nasploh
+            # print("std_dev: " + str(std_dev))
+            if sum(std_dev) > 110:
+                to_remove.append(i)
+                continue
+            # izločimo tiste, ki so pod mejo, pa je odklon na posameznih kanalih različen dovolj različen
+            # a b c so razlike odklnov na dveh kanalih
+            a = abs(std_dev[0] - std_dev[1])
+            b = abs(std_dev[0] - std_dev[2])
+            c = abs(std_dev[1] - std_dev[2])
+            # print("a: " + str(a) + " b: " + str(b) + "c: " + str(c))
+            # te meje so določene experimentalno (od oke)
+            if a > 10 and b > 10 and c > 10:
+                to_remove.append(i)
+                continue
+            # if a > 15 or b > 15 or c > 15:
+            #     to_remove.append(i)
+            #     continue
+        for ix in to_remove[::-1]:
+            del potential_coins[ix]
+
+        # for a, x, a, r, pc in potential_coins:
+        #     show_image(pc, "rad: " + str(r) + " acum: " + str(a))
+        # draw circles
+        # print("num of circles: " + str(len(potential_coins)))
+        image_with_circles = copy.copy(img)  # kopija
+        for a, x, y, r, pc in potential_coins:
+            cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
+        show_image(image_with_circles, "brez velikoh krogov")
+        #
+        #
+        # odstranimo še male kroge znotraj večjih
+        # (x - center_x)^2 + (y - center_y)^2 < radius^2
+        to_remove = []
+        for i in range(len(potential_coins)):
+            center_x = potential_coins[i][1]
+            center_y = potential_coins[i][2]
+            radius = potential_coins[i][3]
+            for j in range(i + 1, len(potential_coins)):
+                x = potential_coins[j][1]
+                y = potential_coins[j][2]
+                # če j coin leži v i coinu
+                if (x - center_x)**2 + (y - center_y)**2 < radius**2:
+                    to_remove.append(j)
+
+        print("pc len: " + str(len(potential_coins)) + " to_remove len: " + str(len(to_remove)))
+        to_remove = np.unique(np.array(to_remove))
+        for ix in to_remove[::-1]:
+            del potential_coins[ix]
+        #
+        #
+        # draw circles
+        # print("num of circles: " + str(len(potential_coins)))
+        image_with_circles = copy.copy(img)  # kopija
+        for a, x, y, r, pc in potential_coins:
+            cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
+        show_image(image_with_circles, "brez malih krogov")
+        #
+        #

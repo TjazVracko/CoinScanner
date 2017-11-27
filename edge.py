@@ -22,6 +22,11 @@ def show_image(img, title=""):
     if key == 27:
         sys.exit()
 
+    if key == 115:
+        # save
+        print("saving")
+        cv2.imwrite("zapisano.png", img)
+
 
 # https://stackoverflow.com/a/45196250
 # https://www.pyimagesearch.com/2015/04/06/zero-parameter-automatic-canny-edge-detection-with-python-and-opencv/
@@ -118,7 +123,6 @@ def get_circles(edge_img):
     # izločimo bližnje kroge
     # meja = 70**2
     circles = list(zip(accums, cx, cy, rad))
-    all_circles = copy.copy(circles)
     to_remove = []
     meja = 70**2
     for i in range(len(circles)):
@@ -138,7 +142,7 @@ def get_circles(edge_img):
         del circles[ix]
     # print("circles: " + str(circles))
 
-    return circles, all_circles
+    return circles
 
 
 if __name__ == '__main__':
@@ -197,16 +201,12 @@ if __name__ == '__main__':
         merged_edges = cv2.add(cv2.add(gray_edges, luv_u_edges), luv_v_edges)  # skrbi za overflow
 
         # probamo še Hough circles
-        circles, all_circles = get_circles(merged_edges)  # accumulator_value, x_coord, y_coord, radius (circles so najboljši iz okolice, all_circles so vsi)
+        circles = get_circles(merged_edges)  # accumulator_value, x_coord, y_coord, radius (circles so najboljši iz okolice, all_circles so vsi)
 
         # print(str(accums))
 
         # draw circles
         image_with_circles = copy.copy(img)  # kopija
-        for a, x, y, r in all_circles:
-            # print(str(circle))
-            cv2.circle(image_with_circles, (x, y), r, (255, 0, 0), 8, cv2.LINE_AA)
-            # cv2.putText(image_with_circles, str(a), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0))
         for a, x, y, r in circles:
             cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
         # print(str(accums))
@@ -243,28 +243,56 @@ if __name__ == '__main__':
         # glede na radius
         SIZE_FACTOR = 1.7
         size_limit = SIZE_FACTOR * potential_coins[0][3]
+        STD_DEV_LIMIT = 110
+        STD_DEV_EDGE_LIMIT = 90
         # glede na razlike v barvah čez krog - standardna deviacija
-        # TODO: 1€ in še posebej 2€ imata večjo standardno deviacijo od ostatih kovancev, zato jo sodaj definirana meja včasih izvrže, to je slabo - how to fix???
+        # 1€ in še posebej 2€ imata večjo standardno deviacijo od ostatih kovancev, zato ju sedaj definirana meja včasih izvrže
+        # IDEA: zračunamo std_dev za rob in za sredino, tako bi ujeli srebrni rob in zlato sredico posebej
+        # 2€ 25pixlov roba, torej 1/8
+        # 1€ 28pixlov roba, neki tu
+        # torej recimo 25 bo dovolj (kar je 1/8 celega)
         r = NEW_SIZE / 2
         ym, xm = np.ogrid[-r:r, -r:r]
         coin_mask = xm**2 + ym**2 > r**2  # ta maska definira krog (oziroma elemente zunaj kroga (manj nek rob) na kvadratu, saj teh ne upoštevamo)
         coin_mask = np.dstack((coin_mask, coin_mask, coin_mask))
-        # print(str(coin_mask.shape))
+
+        # posebne maske za 1€ in 2€
+        edge_width = NEW_SIZE / 8  # 25 pri NEW_SIZE=200
+        coin_edge_mask = (xm**2 + ym**2 > r**2) | (xm**2 + ym**2 < (r - edge_width)**2)
+        coin_inside_mask = xm**2 + ym**2 > (r - edge_width)**2
+        coin_edge_mask = np.dstack((coin_edge_mask, coin_edge_mask, coin_edge_mask))
+        coin_inside_mask = np.dstack((coin_inside_mask, coin_inside_mask, coin_inside_mask))
+
         for i, pc in enumerate(potential_coins):
+            print("NOV CIRCLE")
             # radius
             if pc[3] >= size_limit:
                 to_remove.append(i)
+                print("REMOVED VIA RADIUS: " + str(pc[3]))
                 continue  # skip other part
+
             coin = np.ma.array(pc[4], mask=coin_mask)
             # avg_color = coin.mean(axis=(0, 1))
             std_dev = coin.std(axis=(0, 1))  # vrne deviacijo za r g b posebej : (std_b, std_g, std_r)
+            coin_edge = np.ma.array(pc[4], mask=coin_edge_mask)
+            coin_inside = np.ma.array(pc[4], mask=coin_inside_mask)
+            std_dev_edge = coin_edge.std(axis=(0, 1))
+            std_dev_inside = coin_inside.std(axis=(0, 1))
+
+            print("std_dev: " + str(std_dev))
+            print("std_dev_edge: " + str(std_dev_edge))
+            print("std_dev_inside: " + str(std_dev_inside))
+
             # testiramo če odklon ustreza
-            # preveliki odklon nasploh
-            # print("std_dev: " + str(std_dev))
-            if sum(std_dev) > 110:
-                to_remove.append(i)
-                continue
-            # izločimo tiste, ki so pod mejo, pa je odklon na posameznih kanalih različen dovolj različen
+            if sum(std_dev) > STD_DEV_LIMIT:
+                # poglejmo še edge in inside
+
+                if sum(std_dev_edge) > STD_DEV_EDGE_LIMIT and sum(std_dev_inside) > STD_DEV_EDGE_LIMIT:
+                    to_remove.append(i)
+                    print("REMOVED VIA STD_DEV SUM: " + str(std_dev) + "\n" + str(std_dev_edge) + "\n" + str(std_dev_inside))
+                    continue
+
+            # izločimo tiste, ki so pod mejo, pa je odklon na posameznih kanalih dovolj različen
             # a b c so razlike odklnov na dveh kanalih
             a = abs(std_dev[0] - std_dev[1])
             b = abs(std_dev[0] - std_dev[2])
@@ -273,10 +301,13 @@ if __name__ == '__main__':
             # te meje so določene experimentalno (od oke)
             if a > 10 and b > 10 and c > 10:
                 to_remove.append(i)
+                print("REMOVED VIA STD DEV POSAMIČNO:" + str(std_dev))
+                show_image(pc[4], "REMOVED VIA STD DEV POSAMIČNO")
                 continue
-            # if a > 15 or b > 15 or c > 15:
-            #     to_remove.append(i)
-            #     continue
+
+            print("NOT REMOVED")
+            # show_image(pc[4], "blabla")
+
         for ix in to_remove[::-1]:
             del potential_coins[ix]
 

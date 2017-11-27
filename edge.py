@@ -10,6 +10,8 @@ import copy
 
 np.set_printoptions(threshold=np.nan)
 
+import uuid
+
 
 def show_image(img, title=""):
     cv2.namedWindow(title, cv2.WINDOW_NORMAL)
@@ -25,7 +27,8 @@ def show_image(img, title=""):
     if key == 115:
         # save
         print("saving")
-        cv2.imwrite("zapisano.png", img)
+        znj = uuid.uuid4()
+        cv2.imwrite(str(znj) + ".png", img)
 
 
 # https://stackoverflow.com/a/45196250
@@ -105,7 +108,7 @@ def get_circles(edge_img):
     radii = np.arange(10, 50, 1)  # TODO: max in min radij sta odvisa od tega kak daleč je kamera od kovancev. Bi se dalo to nekak ugotovit??? Da nimamo hardcoded vrednosti
     hspace = hough_circle(small, radii, normalize=False, full_output=False)
     # threshold: Minimum intensity of peaks in each Hough space. Default is (0.5 * np.amax(hspace)).
-    accums, cx, cy, rad = hough_circle_peaks(hspace, radii, min_xdistance=30, min_ydistance=30, threshold=(0.4 * np.amax(hspace)), num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
+    accums, cx, cy, rad = hough_circle_peaks(hspace, radii, min_xdistance=30, min_ydistance=30, threshold=(0.375 * np.amax(hspace)), num_peaks=np.inf, total_num_peaks=np.inf, normalize=False)
 
     # '''test'''
     # for a, x, y, r in zip(accums, cx, cy, rad):
@@ -168,7 +171,7 @@ if __name__ == '__main__':
         img = cv2.imread(filename)
 
         # show image
-        show_image(img, 'original')
+        # show_image(img, 'original')
 
         # predpriprava
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -196,7 +199,7 @@ if __name__ == '__main__':
         # show_image(luv_v_edges, 'luv v edges')
 
         m = cv2.merge((gray_edges, luv_u_edges, luv_v_edges))  # samo za pokazat
-        show_image(m, 'blue=gray_edges, green=luv u, red=luv v')
+        # show_image(m, 'blue=gray_edges, green=luv u, red=luv v')
 
         merged_edges = cv2.add(cv2.add(gray_edges, luv_u_edges), luv_v_edges)  # skrbi za overflow
 
@@ -264,11 +267,11 @@ if __name__ == '__main__':
         coin_inside_mask = np.dstack((coin_inside_mask, coin_inside_mask, coin_inside_mask))
 
         for i, pc in enumerate(potential_coins):
-            print("NOV CIRCLE")
+            # print("NOV CIRCLE")
             # radius
             if pc[3] >= size_limit:
                 to_remove.append(i)
-                print("REMOVED VIA RADIUS: " + str(pc[3]))
+                # print("REMOVED VIA RADIUS: " + str(pc[3]))
                 continue  # skip other part
 
             coin = np.ma.array(pc[4], mask=coin_mask)
@@ -279,9 +282,9 @@ if __name__ == '__main__':
             std_dev_edge = coin_edge.std(axis=(0, 1))
             std_dev_inside = coin_inside.std(axis=(0, 1))
 
-            print("std_dev: " + str(std_dev))
-            print("std_dev_edge: " + str(std_dev_edge))
-            print("std_dev_inside: " + str(std_dev_inside))
+            # print("std_dev: " + str(std_dev))
+            # print("std_dev_edge: " + str(std_dev_edge))
+            # print("std_dev_inside: " + str(std_dev_inside))
 
             # testiramo če odklon ustreza
             if sum(std_dev) > STD_DEV_LIMIT:
@@ -289,7 +292,7 @@ if __name__ == '__main__':
 
                 if sum(std_dev_edge) > STD_DEV_EDGE_LIMIT and sum(std_dev_inside) > STD_DEV_EDGE_LIMIT:
                     to_remove.append(i)
-                    print("REMOVED VIA STD_DEV SUM: " + str(std_dev) + "\n" + str(std_dev_edge) + "\n" + str(std_dev_inside))
+                    # print("REMOVED VIA STD_DEV SUM: " + str(std_dev) + "\n" + str(std_dev_edge) + "\n" + str(std_dev_inside))
                     continue
 
             # izločimo tiste, ki so pod mejo, pa je odklon na posameznih kanalih dovolj različen
@@ -301,12 +304,12 @@ if __name__ == '__main__':
             # te meje so določene experimentalno (od oke)
             if a > 10 and b > 10 and c > 10:
                 to_remove.append(i)
-                print("REMOVED VIA STD DEV POSAMIČNO:" + str(std_dev))
-                show_image(pc[4], "REMOVED VIA STD DEV POSAMIČNO")
+                # print("REMOVED VIA STD DEV POSAMIČNO:" + str(std_dev))
+                # show_image(pc[4], "REMOVED VIA STD DEV POSAMIČNO")
                 continue
 
-            print("NOT REMOVED")
-            # show_image(pc[4], "blabla")
+            # print("NOT REMOVED")
+            show_image(pc[4], "save?")
 
         for ix in to_remove[::-1]:
             del potential_coins[ix]
@@ -347,5 +350,13 @@ if __name__ == '__main__':
         for a, x, y, r, pc in potential_coins:
             cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
         show_image(image_with_circles, "brez malih krogov")
+
         #
         #
+        #
+        #
+        #
+        #
+        #
+        #
+        # ostanejo samo kovanci (kao), zdraj gremo v feature detection (SIFT?, SURF?)

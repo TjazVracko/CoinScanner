@@ -270,7 +270,8 @@ def get_coin_segments(img):
 
     return potential_coins
 
-
+'''
+UNUSED CODE
 # uporabimo otsu threshold in 0.X*otsu
 # NOT IN USE
 def auto_canny_threshold_otsu(image):
@@ -318,3 +319,4 @@ def get_circles_old(gray_img):
     circles[0] *= f
     # print(str(circles))
     return circles
+'''

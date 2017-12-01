@@ -39,7 +39,7 @@ class FeatureDetector:
         avg_hsv = masked_hsv_coin.mean(axis=(0, 1))
         # print(str(avg_color))
         # print(str(avg_gray))
-        return (avg_gray, *avg_color, *avg_hsv)  # * je "Unpack" operator
+        return (avg_gray, *avg_hsv)  # * je "Unpack" operator
 
     @profile
     def learn(self):
@@ -77,9 +77,9 @@ class FeatureDetector:
             avg_color_of_coins = np.mean(cc, axis=0)
             std_dev_of_coins = np.std(cc, axis=0)
 
-            # print("COIN: " + coin_value)
-            # print("AVG: " + str(avg_color_of_coins))
-            # print("STD: " + str(std_dev_of_coins))
+            print("COIN: " + coin_value)
+            print("AVG: " + str(avg_color_of_coins))
+            print("STD: " + str(std_dev_of_coins))
 
             # shranimo
             self.color_knowledge[coin_value] = (avg_color_of_coins, std_dev_of_coins)
@@ -94,7 +94,7 @@ class FeatureDetector:
         '''
         out_class = []
         color_char = self.get_color_caracteristics(coin)
-        # print("THIS COIN COLOR: \n" + str(color_char))
+        print("THIS COIN COLOR: \n" + str(color_char))
 
         # print("KNOWLEDGE: \n" + str(self.color_knowledge))
 
@@ -102,18 +102,24 @@ class FeatureDetector:
             avg_color_knowledge, std_color_knowledge = cck  # odpakiramo da bo bolj razumljivo
 
             diff = abs(avg_color_knowledge - color_char)
-            bigger_then_std = diff > std_color_knowledge+5
+            bigger_then_std = diff > std_color_knowledge*1.5
 
-            # print("COIN: " + coin_value)
-            # print("DIFF: " + str(diff))
-            # print("BIG: " + str(bigger_then_std))
+            print("COIN: " + coin_value)
+            print("DIFF: " + str(diff))
+            print("BIG: " + str(bigger_then_std))
 
-            # recimo da do 2 sta lahko true
-            s = sum(bigger_then_std.astype('uint8'))  # iz true false na 0 1
-            if s <= 2:
-                out_class.append(coin_value)
+            # TEST TEST TEST
+            # klasificiramo samo glede na hue
+            if not bigger_then_std[1]:
+                out_class.append((coin_value, diff[1]))
+            # s = sum(bigger_then_std.astype('uint8'))  # iz true false na 0 1
+            # if s <= 2:
+            #     out_class.append(coin_value)
 
-        return out_class
+        # print(str(out_class))
+        x = sorted(out_class, key=lambda c: c[1])
+        # print(str(x))
+        return x
 
 if __name__ == '__main__':
     fd = FeatureDetector()

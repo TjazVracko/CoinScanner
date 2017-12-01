@@ -2,7 +2,7 @@ import argparse
 import glob
 import cv2
 import copy
-from coinsegmenter import get_coin_segments
+from coinsegmentation import get_coin_segments
 from util import show_image
 from profiler import print_prof_data, clear_prof_data
 
@@ -18,7 +18,7 @@ if __name__ == '__main__':
     dirname = args.images
 
     # loop over all images
-    extensions = ("*.pgn", "*.jpg", "*.jpeg", "*.JPG")
+    extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
     list_e = []
     for extension in extensions:
         list_e.extend(glob.glob(dirname + "/"+extension))
@@ -35,9 +35,9 @@ if __name__ == '__main__':
         image_with_circles = copy.copy(img)  # kopija
         for a, x, y, r, pc in potential_coins:
             cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
-        show_image(image_with_circles, "brez malih krogov")
+        show_image(image_with_circles, "najdeni, filtrirani krogi")
 
-        for a, x, y, r, pc in potential_coins:
-            show_image(pc, "potential coin, rad: " + str(r) + " ,accum: " + str(a))
+        # for a, x, y, r, pc in potential_coins:
+        #     show_image(pc, "potential coin, rad: " + str(r) + " ,accum: " + str(a))
 
     print_prof_data()

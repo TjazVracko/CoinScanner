@@ -1,6 +1,7 @@
 import cv2
 import sys
 import uuid
+from profiler import print_prof_data
 
 
 def show_image(img, title=""):
@@ -12,6 +13,7 @@ def show_image(img, title=""):
     cv2.destroyAllWindows()
 
     if key == 27:
+        print_prof_data()
         sys.exit()
 
     if key == 115:

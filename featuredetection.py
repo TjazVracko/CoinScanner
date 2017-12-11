@@ -7,7 +7,9 @@ from coinsegmentation import get_coin_segments
 from util import show_image
 import copy
 from colormath import color_objects, color_diff
-    
+
+import random
+
 
 class FeatureDetector:
 
@@ -23,6 +25,13 @@ class FeatureDetector:
         self.coin_mask_1 = coin_mask
         self.coin_mask_3 = coin_mask_3
 
+        # posebne maske za 1€ in 2€
+        edge_width = 25  # 25 pri NEW_SIZE=200
+        self.coin_edge_mask_1 = (xm**2 + ym**2 > r**2) | (xm**2 + ym**2 < (r - edge_width)**2)
+        self.coin_inside_mask_1 = xm**2 + ym**2 > (r - edge_width)**2
+        self.coin_edge_mask_3 = np.dstack((self.coin_edge_mask_1, self.coin_edge_mask_1, self.coin_edge_mask_1))
+        self.coin_inside_mask_3 = np.dstack((self.coin_inside_mask_1, self.coin_inside_mask_1, self.coin_inside_mask_1))
+
         self.color_knowledge = {}
 
     def get_color_caracteristics(self, coin_image):
@@ -32,30 +41,39 @@ class FeatureDetector:
         se nam splača samo Lab prostor, in pol uporabimo tiste formule za razdaljo, ki kao predstavlja človeško zaznavo
         paper: http://www2.ece.rochester.edu/~gsharma/ciede2000/
         '''
-        # gray_coin = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
-        # hsv_coin = cv2.cvtColor(coin_image, cv2.COLOR_BGR2HSV)
-        # masked_coin = np.ma.array(coin_image, mask=self.coin_mask_3)
-        # masked_gray_coin = np.ma.array(gray_coin, mask=self.coin_mask_1)
-        # masked_hsv_coin = np.ma.array(hsv_coin, mask=self.coin_mask_3)
 
-        # avg_bgr = masked_coin.mean(axis=(0, 1))
-        # avg_gray = masked_gray_coin.mean()
-        # avg_hsv = masked_hsv_coin.mean(axis=(0, 1))
-        # std_bgr = masked_coin.std(axis=(0, 1))
-        # std_gray = masked_gray_coin.std()
-        # std_hsv = masked_hsv_coin.std(axis=(0, 1))
+        # spremenimo v float 0 do 1 image, da nam konverzija pol vrne prave vrednosti
+        # fpi = coin_image.astype('float32') / 255
+        fpi = np.float32(coin_image)
+        fpi = fpi * (1.0/255)
 
-        lab_coin = cv2.cvtColor(coin_image, cv2.COLOR_BGR2LAB)
+        lab_coin = cv2.cvtColor(fpi, cv2.COLOR_BGR2Lab)
         masked_lab_coin = np.ma.array(lab_coin, mask=self.coin_mask_3)
-        avg_lab = masked_lab_coin.mean(axis=(0, 1))
+        # avg_lab = masked_lab_coin.mean(axis=(0, 1))
         std_lab = masked_lab_coin.std(axis=(0, 1))
 
-        return avg_lab, std_lab  # (avg_gray, *avg_hsv, std_gray, *std_hsv)  # * je "Unpack" operator, RGB data se mi zdi neuporabna
+        masked_edge = np.ma.array(lab_coin, mask=self.coin_edge_mask_3)
+        avg_edge = masked_edge.mean(axis=(0, 1))
+        # std_edge = masked_edge.std(axis=(0, 1))
 
+        masked_inside = np.ma.array(lab_coin, mask=self.coin_inside_mask_3)
+        avg_inside = masked_inside.mean(axis=(0, 1))
+        # std_inside = masked_inside.std(axis=(0, 1))
+
+        return avg_edge.data, avg_inside.data, std_lab.data  # , std_inside.data  # (avg_gray, *avg_hsv, std_gray, *std_hsv)  # * je "Unpack" operator, RGB data se mi zdi neuporabna
+
+    # https://python-colormath.readthedocs.io/en/latest/delta_e.html
     @staticmethod
     def color_difference(color1, color2):
         c1 = color_objects.LabColor(*color1)
         c2 = color_objects.LabColor(*color2)
+        return color_diff.delta_e_cie2000(c1, c2)  # najnovejša formula, kao d best
+
+    @staticmethod
+    def color_difference_no_luminance(color1, color2):
+        l = 50  # pač fiksni L
+        c1 = color_objects.LabColor(l, color1[1], color1[2])
+        c2 = color_objects.LabColor(l, color2[1], color2[2])
         return color_diff.delta_e_cie2000(c1, c2)  # najnovejša formula, kao d best
 
     @profile
@@ -113,51 +131,59 @@ class FeatureDetector:
 
         # print("KNOWLEDGE: \n" + str(self.color_knowledge))
 
-        for coin_value, color_knowledge in self.color_knowledge.items():
+        for coin_value, coin_knowledge in self.color_knowledge.items():
             # diff = abs(color_knowledge - color_char_of_coin)
             # bigger_then_std = diff > std_color_knowledge*1.5
 
             # get color diference in lab via formulas
-            diff = FeatureDetector.color_difference(color_knowledge[0], color_char_of_coin[0])
+            # diff_color = FeatureDetector.color_difference(coin_knowledge[0], color_char_of_coin[0])
+            diff_color_edge = FeatureDetector.color_difference_no_luminance(coin_knowledge[0], color_char_of_coin[0])
+            diff_color_inside = FeatureDetector.color_difference_no_luminance(coin_knowledge[1], color_char_of_coin[1])
+            # diff_std_edge = abs(coin_knowledge[2] - color_char_of_coin[2])
+            # diff_std_inside = abs(coin_knowledge[3] - color_char_of_coin[3])
+            diff_std = abs(coin_knowledge[2] - color_char_of_coin[2])
 
             print("COIN: " + coin_value)
-            print("DIFF: " + str(diff))
-            # print("BIG: " + str(bigger_then_std))
+            print("DIFF COL: " + str(diff_color_edge) + "\n" + str(diff_color_inside))
+            # print("DIFF STD: " + str(diff_std_edge) + "\n" + str(diff_std_inside))
+            print("DIFF STD: " + str(diff_std))
 
-            if diff < 15:
-                out_class.append((coin_value, diff))
+            # razred je enak, če je razlika v povprečni barvi dovolj majhna, in če se stadnardna deviacija ne razlikuje preveč
+            if diff_color_edge < 11 and diff_color_inside < 11 and diff_std[1] < 4 and diff_std[2] < 4:
+                out_class.append((coin_value, diff_color_edge, diff_color_inside))
 
         # print(str(out_class))
-        out_class = sorted(out_class, key=lambda c: c[1])
+        out_class = sorted(out_class, key=lambda c: c[1] + c[2])
         return out_class
 
-if __name__ == '__main__':
-    fd = FeatureDetector()
-    fd.learn()
+# if __name__ == '__main__':
+#     fd = FeatureDetector()
+#     fd.learn()
 
-    # TEST TEST TEST
-    # loop over all images
-    extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
-    list_e = []
-    for extension in extensions:
-        list_e.extend(glob.glob('/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/izbrane' + "/"+extension))
-    list_e.sort()  # da bo po abecedi
+#     # TEST TEST TEST
+#     # loop over all images
+#     extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
+#     list_e = []
+#     for extension in extensions:
+#         list_e.extend(glob.glob('/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/izbrane' + "/"+extension))
+#     # list_e.sort()  # da bo po abecedi
+#     random.shuffle(list_e)
 
-    for filename in list_e:
-        # read image
-        img = cv2.imread(filename)
-        show_image(img, "original")
+#     for filename in list_e:
+#         # read image
+#         img = cv2.imread(filename)
+#         show_image(img, "original")
 
-        # get singular coins (probably coins)
-        potential_coins = get_coin_segments(img)
+#         # get singular coins (probably coins)
+#         potential_coins = get_coin_segments(img)
 
-        image_with_circles = copy.copy(img)  # kopija
-        for a, x, y, r, pc in potential_coins:
-            cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
-        show_image(image_with_circles, "najdeni, filtrirani krogi")
+#         image_with_circles = copy.copy(img)  # kopija
+#         for a, x, y, r, pc in potential_coins:
+#             cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
+#         show_image(image_with_circles, "najdeni, filtrirani krogi")
 
-        # klasificiramo po barvi
-        for a, x, y, r, im in potential_coins:
-            coin_type = fd.classify_by_color(im)
-            print("TA KOVANEC JE: \n" + str(coin_type))
-            show_image(im, 'trenutni kovanec')
+#         # klasificiramo po barvi
+#         for a, x, y, r, im in potential_coins:
+#             coin_type = fd.classify_by_color(im)
+#             print("TA KOVANEC JE: \n" + str(coin_type))
+#             show_image(im, 'trenutni kovanec')

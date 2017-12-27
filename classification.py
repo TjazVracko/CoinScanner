@@ -1,4 +1,5 @@
 from colorfeaturedetection import ColorFeatureDetector
+from texturefeaturedetection import TextureFeatureDetector
 from profiler import profile
 import glob
 import cv2
@@ -10,11 +11,12 @@ class Classificator:
     learning_images_base_path = '/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/ucenje/'
     learning_images_folder = {'1c': '_1c', '2c': '_2c', '5c': '_5c', '10c': '_10c', '20c': '_20c', '50c': '_50c', '1e': '_1e', '2e': '_2e'}
     coin_values = ('1c', '2c', '5c', '10c', '20c', '50c', '1e', '2e')
-    color_groups = {'bron', 'zlato', '1e', '2e'}
+    color_groups = ('bron', 'zlato', '1e', '2e')
 
     def __init__(self):
         self.color_knowledge = {}
         self.color_group_knowledge = {}
+        self.texture_knowledge = {}
 
     @profile
     def learn(self):
@@ -22,9 +24,11 @@ class Classificator:
         Vzameš vsak set kovancev in zračunaš potrebne podatke za vektor
         '''
         all_color_chars = {}
+        all_texture_chars = {}
         # čez vse kovance
         for coin_value, folder_name in self.learning_images_folder.items():
             all_color_chars[coin_value] = []
+            all_texture_chars[coin_value] = []
 
             dirname = self.learning_images_base_path + folder_name
             # loop over all images
@@ -39,17 +43,17 @@ class Classificator:
                 img = cv2.imread(filename)
 
                 # barva
-                # color_chars = ColorFeatureDetector.get_color_caracteristics(img)
+                # color_chars = ColorFeatureDetector.get_color_characteristics(img)
                 # color_chars = ColorFeatureDetector.get_color_histograms(img)
                 # color_chars = ColorFeatureDetector.get_2d_color_histograms_lab(img)
                 color_chars = ColorFeatureDetector.get_2d_color_histograms_hsv(img)
                 all_color_chars[coin_value].append(color_chars)
 
-                #
-                #
-                #
+                # tekstura
+                tex_chars = TextureFeatureDetector.get_texture_characteristics_orb(img)
+                all_texture_chars[coin_value].append(tex_chars)
 
-        # imamo histograme za vsak kovanec, zračunamo povprečje teh čez vse kovance
+        # imamo histograme barv za vsak kovanec, zračunamo povprečje teh čez vse kovance
         for coin_value, color_chars in all_color_chars.items():
             cc = np.array(color_chars)
             avg_color_of_coins = np.mean(cc, axis=0)
@@ -69,7 +73,29 @@ class Classificator:
         self.color_group_knowledge['1e'] = self.color_knowledge['1e']
         self.color_group_knowledge['2e'] = self.color_knowledge['2e']
 
-        # print(self.color_knowledge)
+        # teksture
+        for coin_value, tex_chars in all_texture_chars.items():
+            # shranimo
+            self.texture_knowledge[coin_value] = tex_chars
+
+    def classify_by_texture(self, coin):
+        '''
+        Uses brute force matching to find closest match
+        https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_matcher/py_matcher.html
+        '''
+
+        # get tex features from coin
+        kp, des = TextureFeatureDetector.get_texture_characteristics_orb(coin)
+
+        # iščemo z BFMatcher
+        tex_matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+        for coin_value, coin_knowledge in self.texture_knowledge.items():
+            # za vsak tip kovanca primerjaj PRIMEREK z vsemi iz tipa, vzami najbolši match
+            # potem izmed 8 matchov (glede na vsak tip kovanca) izberi najbolšega
+
+            
+
 
     def classify_by_color(self, coin):
         '''

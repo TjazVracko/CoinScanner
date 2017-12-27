@@ -1,12 +1,7 @@
 import cv2
 import numpy as np
-
-from coinsegmentation import get_coin_segments
-import util
-import copy
+from util import *
 from colormath import color_objects, color_diff
-
-import random
 
 
 class ColorFeatureDetector:
@@ -24,7 +19,7 @@ class ColorFeatureDetector:
     coin_inside_mask_3 = np.dstack((coin_inside_mask_1, coin_inside_mask_1, coin_inside_mask_1))
 
     @staticmethod
-    def get_color_caracteristics(coin_image):
+    def get_color_characteristics(coin_image):
         '''
         Retuns avarage color and standard deviation within coin cirlce
         glede na https://en.wikipedia.org/wiki/Color_difference

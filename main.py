@@ -5,7 +5,7 @@ import copy
 from coinsegmentation import get_coin_segments
 from util import show_image, print_yes_no, reset_yes_no
 from profiler import print_prof_data, clear_prof_data
-from featuredetection import FeatureDetector
+from classification import Classificator
 
 import random
 import numpy as np
@@ -29,8 +29,8 @@ if __name__ == '__main__':
     # random.shuffle(list_e)
 
     # init feature detection
-    fd = FeatureDetector()
-    fd.learn()
+    csf = Classificator()
+    csf.learn()
 
     for filename in list_e:
         # read image
@@ -49,7 +49,7 @@ if __name__ == '__main__':
         for a, x, y, r, im in potential_coins:
             # show_image(im, 'trenutni kovanec')
 
-            coin_type = fd.classify_by_color(im)
+            coin_type = csf.classify_by_color(im)
             coin_value_list = [a[0] for a in coin_type]
             cv2.putText(image_with_circles, str(coin_value_list), (x - r - 5, y), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0))
             print("TA KOVANEC JE: \n", coin_type)

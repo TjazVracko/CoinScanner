@@ -2,6 +2,40 @@ import cv2
 import sys
 import uuid
 from profiler import print_prof_data
+import matplotlib.pyplot as plt
+
+
+def draw_hist(hist, bins):
+    width = 0.7 * (bins[1] - bins[0])
+    center = (bins[:-1] + bins[1:]) / 2
+    plt.bar(center, hist, align='center', width=width)
+    plt.show()
+
+
+def draw_4_hist(hists, bins):
+    width = 0.7 * (bins[1] - bins[0])
+    center = (bins[:-1] + bins[1:]) / 2
+    sp = 221
+    for i in range(len(hists)):
+        plt.subplot(sp)
+        sp += 1
+        plt.bar(center, hists[i], align='center', width=width)
+    plt.show()
+
+
+def draw_hist_comparison(hist_array1, hist_array2, bins):
+    sp = 221
+    for i in range(len(hist_array1)):
+        plt.subplot(sp)
+        sp += 1
+        plt.plot(bins[:-1], hist_array1[i], "b-", bins[:-1], hist_array2[i], "r-")
+    plt.show()
+
+
+def draw_2d_hist(hist2d):
+    plt.imshow(hist2d, interpolation='nearest')
+    plt.show()
+
 
 UTIL_YES = 0
 UTIL_NO = 0

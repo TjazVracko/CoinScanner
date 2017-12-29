@@ -11,6 +11,8 @@ class Classificator:
     learning_images_base_path = '/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/ucenje/'
     learning_images_folder = {'1c': '_1c', '2c': '_2c', '5c': '_5c', '10c': '_10c', '20c': '_20c', '50c': '_50c', '1e': '_1e', '2e': '_2e'}
     coin_values = ('1c', '2c', '5c', '10c', '20c', '50c', '1e', '2e')
+    coin_value_string_to_int = {'1c': 0, '2c': 1, '5c': 2, '10c': 3, '20c': 4, '50c': 5, '1e': 6, '2e': 7}
+    coin_value_int_to_string = dict((v, k) for k, v in coin_value_string_to_int.items())  # menja key in value od zgoraj
     color_groups = ('bron', 'zlato', '1e', '2e')
 
     def __init__(self):
@@ -50,8 +52,12 @@ class Classificator:
                 all_color_chars[coin_value].append(color_chars)
 
                 # tekstura
-                tex_chars = TextureFeatureDetector.get_texture_characteristics_orb(img)
-                all_texture_chars[coin_value].append(tex_chars)
+                # kp, des = TextureFeatureDetector.get_texture_characteristics_orb(img)
+                # # če je manj značilnic od neke vrednosti, zavržemo
+                # if hasattr(des, '__len__') and len(des) > 50:
+                #     all_texture_chars[coin_value].append((kp, des))
+                hog_des = TextureFeatureDetector.get_texture_characteristics_hog(img)
+                all_texture_chars[coin_value].append(hog_des)
 
         # imamo histograme barv za vsak kovanec, zračunamo povprečje teh čez vse kovance
         for coin_value, color_chars in all_color_chars.items():
@@ -75,27 +81,72 @@ class Classificator:
 
         # teksture
         for coin_value, tex_chars in all_texture_chars.items():
+            tex_chars = np.array(tex_chars)
             # shranimo
             self.texture_knowledge[coin_value] = tex_chars
+            print((tex_chars.shape))
+
+        # init and train svm
+        self.init_and_train_SVM()
+
+    def init_and_train_SVM(self):
+        # https://stackoverflow.com/questions/37715160/how-do-i-train-an-svm-classifier-using-hog-features-in-opencv-3-0-in-python
+
+        # pripravimo podatke
+        samples = []
+        labels = []
+        for coin_value, tex_chars in self.texture_knowledge.items():
+            for tc in tex_chars:
+                samples.append(tc)
+                labels.append(self.coin_value_string_to_int[coin_value])
+
+        print("INIT SVM")
+
+        # Convert objects to Numpy Objects
+        samples = np.array(samples, dtype='float32')
+        labels = np.array(labels)
+
+        print(samples.shape)
+        print(labels.shape)
+
+        # randomize order
+        rand = np.random.RandomState(321)
+        shuffle = rand.permutation(len(samples))
+        samples = samples[shuffle]
+        labels = labels[shuffle]
+
+        # Create SVM
+        svm = cv2.ml.SVM_create()
+        svm.setType(cv2.ml.SVM_C_SVC)
+        svm.setKernel(cv2.ml.SVM_RBF)  # cv2.ml.SVM_LINEAR
+        # svm.setDegree(0.0)
+        svm.setGamma(5.383)
+        # svm.setCoef0(0.0)
+        svm.setC(2.67)
+        # svm.setNu(0.0)
+        # svm.setP(0.0)
+        # svm.setClassWeights(None)
+
+        # Train
+        svm.train(samples, cv2.ml.ROW_SAMPLE, labels)
+        svm.save('svm_data.dat')
+
+        self.tex_svm = svm
 
     def classify_by_texture(self, coin):
         '''
-        Uses brute force matching to find closest match
-        https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_matcher/py_matcher.html
+        Uses SVM to find coin class
         '''
 
         # get tex features from coin
-        kp, des = TextureFeatureDetector.get_texture_characteristics_orb(coin)
+        tex_des = TextureFeatureDetector.get_texture_characteristics_hog(coin)
+        print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # use SVM
+        result = self.tex_svm.predict(tex_des)  # TODO: zakaj to ne dela FFS
 
-        # iščemo z BFMatcher
-        tex_matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        print(result)
 
-        for coin_value, coin_knowledge in self.texture_knowledge.items():
-            # za vsak tip kovanca primerjaj PRIMEREK z vsemi iz tipa, vzami najbolši match
-            # potem izmed 8 matchov (glede na vsak tip kovanca) izberi najbolšega
-
-            
-
+        return None
 
     def classify_by_color(self, coin):
         '''

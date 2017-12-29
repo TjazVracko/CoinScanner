@@ -45,16 +45,15 @@ if __name__ == '__main__':
             cv2.circle(image_with_circles, (x, y), r, (0, 0, 255), 8, cv2.LINE_AA)
         show_image(image_with_circles, "najdeni, filtrirani krogi")
 
-        # klasificiramo po barvi
+        # klasificiramo
         for a, x, y, r, im in potential_coins:
+            # po barvi
             # show_image(im, 'trenutni kovanec')
 
             coin_type = csf.classify_by_color(im)
             coin_value_list = [a[0] for a in coin_type]
             cv2.putText(image_with_circles, str(coin_value_list), (x - r - 5, y), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0))
             print("TA KOVANEC JE: \n", coin_type)
-
-            show_image(im, 'trenutni kovanec')
 
             # # TEST
             # r = 100
@@ -75,6 +74,11 @@ if __name__ == '__main__':
             # imi[coin_inside_mask] = 0
             # show_image(ime, "edge")
             # show_image(imi, "inside")
+
+            # po teksturi
+            tex_coin_class = csf.classify_by_texture(im)
+
+            show_image(im, 'trenutni kovanec')
 
         # print yes no values
         print_yes_no()

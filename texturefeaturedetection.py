@@ -5,7 +5,7 @@ import util
 
 class TextureFeatureDetector:
 
-    sift = cv2.xfeatures2d.SIFT_create()
+    sift = cv2.xfeatures2d.SIFT_create(nfeatures=500)
     orb = cv2.ORB_create(nfeatures=500)
     # HOG
     winSize = (64, 64)
@@ -29,7 +29,7 @@ class TextureFeatureDetector:
 
         gray = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
 
-        # kp = sift.detect(gray, None)
+        # kp = TextureFeatureDetector.sift.detect(gray, None)
         # img = cv2.drawKeypoints(gray, kp, coin_image, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         # util.show_image(img)
 
@@ -63,6 +63,5 @@ class TextureFeatureDetector:
         h = TextureFeatureDetector.hog.compute(coin_image, winStride, padding, locations)
 
         h = h.reshape(len(h))
-        print(h.shape)
 
         return h

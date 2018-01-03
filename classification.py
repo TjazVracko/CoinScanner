@@ -15,10 +15,137 @@ class Classificator:
     coin_value_int_to_string = dict((v, k) for k, v in coin_value_string_to_int.items())  # menja key in value od zgoraj
     color_groups = ('bron', 'zlato', '1e', '2e')
 
+    BOW_VOCABULARY_SIZE = 64
+
     def __init__(self):
         self.color_knowledge = {}
         self.color_group_knowledge = {}
         self.texture_knowledge = {}
+
+        self.hog_svm = None
+
+        self.bow_descriptor_extractor = None
+        self.sift_bow_svm = None
+
+    def save_vocabulary(self, voc):
+        fs = cv2.FileStorage('vocab.yml', flags=cv2.FileStorage_WRITE)
+        fs.write("vocabulary", voc)
+        fs.release()
+
+    def set_bow_from_file(self):
+        fs = cv2.FileStorage('vocab.yml', flags=cv2.FileStorage_READ)
+        vocabulary = fs.getNode('vocabulary').mat()
+        fs.release()
+        # vocabulary = np.array(vocabulary, dtype="float32")
+
+        # flann_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        # matcher = cv2.FlannBasedMatcher(flann_params, {})
+        matcher = cv2.BFMatcher(cv2.NORM_L2)
+        self.bow_descriptor_extractor = cv2.BOWImgDescriptorExtractor(TextureFeatureDetector.sift, matcher)
+        self.bow_descriptor_extractor.setVocabulary(vocabulary)
+
+        print("BOW VOCAB SET FROM FILE")
+        self.init_and_train_SIFT_BOW_SVM()
+
+    @profile
+    def learn_bow(self):
+        print("Training BOW")
+        bowTrainer = cv2.BOWKMeansTrainer(Classificator.BOW_VOCABULARY_SIZE)
+
+        for coin_value, folder_name in self.learning_images_folder.items():
+            dirname = self.learning_images_base_path + folder_name
+            # loop over all images
+            extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
+            list_e = []
+            for extension in extensions:
+                list_e.extend(glob.glob(dirname + "/"+extension))
+
+            # vsak kovanec enega tipa
+            for filename in list_e:
+                img = cv2.imread(filename)
+
+                # tekstura z ORB in BoW (bag of words)
+                kp, des = TextureFeatureDetector.get_texture_characteristics_sift(img)
+                #   print(des.shape)
+                if hasattr(des, '__len__') and len(des) >= Classificator.BOW_VOCABULARY_SIZE:
+                    # des = np.array(des, dtype='float32')
+                    bowTrainer.add(des)
+
+        vocabulary = bowTrainer.cluster()
+
+        # save vocabulary
+        self.save_vocabulary(vocabulary)
+
+        # flann_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        # matcher = cv2.FlannBasedMatcher(flann_params, {})
+        matcher = cv2.BFMatcher(cv2.NORM_L2)
+        self.bow_descriptor_extractor = cv2.BOWImgDescriptorExtractor(TextureFeatureDetector.sift, matcher)
+        self.bow_descriptor_extractor.setVocabulary(vocabulary)
+
+        print("DONE Training BOW")
+        self.init_and_train_SIFT_BOW_SVM()
+
+    def init_and_train_SIFT_BOW_SVM(self):
+        print("Training SIFT BOW SVM")
+
+        samples = []
+        labels = []
+
+        for coin_value, folder_name in self.learning_images_folder.items():
+            dirname = self.learning_images_base_path + folder_name
+            # loop over all images
+            extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
+            list_e = []
+            for extension in extensions:
+                list_e.extend(glob.glob(dirname + "/"+extension))
+
+            # vsak kovanec enega tipa
+            for filename in list_e:
+                img = cv2.imread(filename)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+                # extract descriptors with trained bow extractor
+                kp = TextureFeatureDetector.sift.detect(img, None)
+                if hasattr(kp, '__len__'):
+                    des = self.bow_descriptor_extractor.compute(img, kp)
+                    # print(len(des))
+                    samples.append(des)
+                    labels.append(self.coin_value_string_to_int[coin_value])
+
+        # Convert objects to Numpy Objects
+        samples = np.array(samples, dtype='float32')
+        samples = samples.reshape(-1, Classificator.BOW_VOCABULARY_SIZE)
+        labels = np.array(labels)
+
+        print(samples.shape)
+        print(labels.shape)
+
+        # randomize order
+        rand = np.random.RandomState(321)
+        shuffle = rand.permutation(len(samples))
+        samples = samples[shuffle]
+        labels = labels[shuffle]
+
+        # Create SVM
+        svm = cv2.ml.SVM_create()
+        svm.setType(cv2.ml.SVM_C_SVC)
+        svm.setKernel(cv2.ml.SVM_RBF)  # cv2.ml.SVM_LINEAR
+        # svm.setDegree(0.0)
+        svm.setGamma(5.383)
+        # svm.setCoef0(0.0)
+        svm.setC(2.67)
+        # svm.setNu(0.0)
+        # svm.setP(0.0)
+        # svm.setClassWeights(None)
+
+        # Train
+        tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
+        svm.train(tdata)
+        # svm.save('svm_data.dat')
+
+        self.sift_bow_svm = svm
+
+        print("DONE Training SIFT BOW SVM")
 
     @profile
     def learn(self):
@@ -87,9 +214,9 @@ class Classificator:
             print((tex_chars.shape))
 
         # init and train svm
-        self.init_and_train_SVM()
+        self.init_and_train_HOG_SVM()
 
-    def init_and_train_SVM(self):
+    def init_and_train_HOG_SVM(self):
         # https://stackoverflow.com/questions/37715160/how-do-i-train-an-svm-classifier-using-hog-features-in-opencv-3-0-in-python
 
         # pripravimo podatke
@@ -128,25 +255,50 @@ class Classificator:
         # svm.setClassWeights(None)
 
         # Train
-        svm.train(samples, cv2.ml.ROW_SAMPLE, labels)
-        svm.save('svm_data.dat')
+        tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
+        svm.train(tdata)
+        # svm.save('svm_data.dat')
 
-        self.tex_svm = svm
+        self.hog_svm = svm
 
-    def classify_by_texture(self, coin):
+    def classify_by_texture_sift_bow(self, coin):
         '''
-        Uses SVM to find coin class
+        Uses SVM to find coin class via SIFT descriptors and BoW
+        '''
+
+        img = cv2.cvtColor(coin, cv2.COLOR_BGR2GRAY)
+        # extract descriptors with trained bow extractor
+        kp = TextureFeatureDetector.sift.detect(img, None)
+        tex_des = self.bow_descriptor_extractor.compute(img, kp)
+
+        # tex_des = tex_des.reshape(-1, len(tex_des))
+        print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # use SVM
+        result = self.sift_bow_svm.predict(tex_des)
+
+        print(result)
+        chosenclass = result[1][0][0]
+        print("SIFT TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
+
+        return chosenclass
+
+    def classify_by_texture_hog(self, coin):
+        '''
+        Uses SVM to find coin class via HOG descriptors
         '''
 
         # get tex features from coin
         tex_des = TextureFeatureDetector.get_texture_characteristics_hog(coin)
+        tex_des = tex_des.reshape(-1, len(tex_des))
         print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
         # use SVM
-        result = self.tex_svm.predict(tex_des)  # TODO: zakaj to ne dela FFS
+        result = self.hog_svm.predict(tex_des)
 
         print(result)
+        chosenclass = result[1][0][0]
+        print("HOG TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
 
-        return None
+        return chosenclass
 
     def classify_by_color(self, coin):
         '''

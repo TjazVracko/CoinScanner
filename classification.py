@@ -8,7 +8,7 @@ import numpy as np
 
 class Classificator:
 
-    learning_images_base_path = '/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/ucenje/'
+    learning_images_base_path = '/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/ucenje_2/'
     learning_images_folder = {'1c': '_1c', '2c': '_2c', '5c': '_5c', '10c': '_10c', '20c': '_20c', '50c': '_50c', '1e': '_1e', '2e': '_2e'}
     coin_values = ('1c', '2c', '5c', '10c', '20c', '50c', '1e', '2e')
     coin_value_string_to_int = {'1c': 0, '2c': 1, '5c': 2, '10c': 3, '20c': 4, '50c': 5, '1e': 6, '2e': 7}
@@ -131,16 +131,17 @@ class Classificator:
         svm.setType(cv2.ml.SVM_C_SVC)
         svm.setKernel(cv2.ml.SVM_RBF)  # cv2.ml.SVM_LINEAR
         # svm.setDegree(0.0)
-        svm.setGamma(5.383)
+        # svm.setGamma(5.383)
         # svm.setCoef0(0.0)
-        svm.setC(2.67)
+        # svm.setC(2.67)
         # svm.setNu(0.0)
         # svm.setP(0.0)
         # svm.setClassWeights(None)
 
         # Train
-        tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
-        svm.train(tdata)
+        # tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
+        # svm.train(tdata)
+        svm.trainAuto(samples, cv2.ml.ROW_SAMPLE, labels)
         # svm.save('svm_data.dat')
 
         self.sift_bow_svm = svm
@@ -247,16 +248,17 @@ class Classificator:
         svm.setType(cv2.ml.SVM_C_SVC)
         svm.setKernel(cv2.ml.SVM_RBF)  # cv2.ml.SVM_LINEAR
         # svm.setDegree(0.0)
-        svm.setGamma(5.383)
+        # svm.setGamma(5.383)
         # svm.setCoef0(0.0)
-        svm.setC(2.67)
+        # svm.setC(2.67)
         # svm.setNu(0.0)
         # svm.setP(0.0)
         # svm.setClassWeights(None)
 
         # Train
-        tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
-        svm.train(tdata)
+        # tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
+        # svm.train(tdata)
+        svm.trainAuto(samples, cv2.ml.ROW_SAMPLE, labels)
         # svm.save('svm_data.dat')
 
         self.hog_svm = svm
@@ -278,9 +280,9 @@ class Classificator:
 
         print(result)
         chosenclass = result[1][0][0]
-        print("SIFT TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
+        # print("SIFT TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
 
-        return chosenclass
+        return self.coin_value_int_to_string[int(chosenclass)]
 
     def classify_by_texture_hog(self, coin):
         '''
@@ -296,9 +298,9 @@ class Classificator:
 
         print(result)
         chosenclass = result[1][0][0]
-        print("HOG TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
+        # print("HOG TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
 
-        return chosenclass
+        return self.coin_value_int_to_string[int(chosenclass)]
 
     def classify_by_color(self, coin):
         '''

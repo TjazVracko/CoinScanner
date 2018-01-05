@@ -25,14 +25,14 @@ if __name__ == '__main__':
     list_e = []
     for extension in extensions:
         list_e.extend(glob.glob(dirname + "/"+extension))
-    # list_e.sort()  # da bo po abecedi
-    random.shuffle(list_e)
+    list_e.sort()  # da bo po abecedi
+    # random.shuffle(list_e)
 
     # init feature detection
     csf = Classificator()
     csf.learn()
-    # csf.learn_bow()
-    csf.set_bow_from_file()
+    csf.learn_bow()
+    # csf.set_bow_from_file()
 
     for filename in list_e:
         # read image
@@ -80,6 +80,10 @@ if __name__ == '__main__':
             # po teksturi
             tex_coin_class_hog = csf.classify_by_texture_hog(im)
             tex_coin_class_sift = csf.classify_by_texture_sift_bow(im)
+
+            print("PO HOG: ", tex_coin_class_hog)
+
+            print("PO SIFT: ", tex_coin_class_sift)
 
             show_image(im, 'trenutni kovanec')
 

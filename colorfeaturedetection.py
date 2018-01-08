@@ -1,18 +1,18 @@
 import cv2
 import numpy as np
-from util import *
+from util import COIN_IMG_SIZE
 from colormath import color_objects, color_diff
 
 
 class ColorFeatureDetector:
 
-    r = 100  # NEW_SIZE / 2
+    r = COIN_IMG_SIZE / 2  # NEW_SIZE / 2
     ym, xm = np.ogrid[-r:r, -r:r]
     coin_mask_1 = xm**2 + ym**2 > r**2  # ta maska definira krog (oziroma elemente zunaj kroga (manj nek rob) na kvadratu, saj teh ne upoštevamo)
     coin_mask_3 = np.dstack((coin_mask_1, coin_mask_1, coin_mask_1))
 
     # posebne maske za 1€ in 2€
-    edge_width = 25  # 25 pri NEW_SIZE=200
+    edge_width = COIN_IMG_SIZE / 8  # 25 pri NEW_SIZE=200
     coin_edge_mask_1 = (xm**2 + ym**2 > r**2) | (xm**2 + ym**2 < (r - edge_width)**2)
     coin_inside_mask_1 = xm**2 + ym**2 > (r - edge_width)**2
     coin_edge_mask_3 = np.dstack((coin_edge_mask_1, coin_edge_mask_1, coin_edge_mask_1))

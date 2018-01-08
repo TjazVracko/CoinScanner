@@ -15,6 +15,7 @@ if __name__ == '__main__':
     # parse input
     parser = argparse.ArgumentParser(description='Edge detector')
     parser.add_argument('-i', '--images', required=True, help='Path to images (directory)')
+    parser.add_argument('-l', '--load', action='store_true', help='If set, trained data will be loaded from file, otherwise train anew')
 
     args = parser.parse_args()
 
@@ -30,9 +31,17 @@ if __name__ == '__main__':
 
     # init feature detection
     csf = Classificator()
-    csf.learn()
-    csf.learn_bow()
-    # csf.set_bow_from_file()
+    if args.load:
+        csf.load_color_knowledge_from_file()
+
+        csf.load_hog_svm()
+
+        csf.load_bow_from_file()
+        csf.load_sift_svm()
+    else:
+        csf.learn_color()
+        csf.learn_hog()
+        csf.learn_sift_bow()
 
     for filename in list_e:
         # read image
@@ -49,13 +58,14 @@ if __name__ == '__main__':
 
         # klasificiramo
         for a, x, y, r, im in potential_coins:
+            print("NEXT COIN:")
             # po barvi
             # show_image(im, 'trenutni kovanec')
 
             coin_type = csf.classify_by_color(im)
             coin_value_list = [a[0] for a in coin_type]
             cv2.putText(image_with_circles, str(coin_value_list), (x - r - 5, y), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0))
-            print("TA KOVANEC JE: \n", coin_type)
+            print("PO BARVI: \n", coin_type)
 
             # # TEST
             # r = 100

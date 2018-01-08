@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import util
 
+from skimage import feature, exposure
+
 
 class TextureFeatureDetector:
 
@@ -56,12 +58,24 @@ class TextureFeatureDetector:
         TODO: hog ima tudi nastavitve, preveri:
         https://stackoverflow.com/questions/28390614/opencv-hogdescripter-python
         '''
-        winStride = (8, 8)
-        padding = (8, 8)
-        locations = ((10, 20),)
 
-        h = TextureFeatureDetector.hog.compute(coin_image, winStride, padding, locations)
+        # winStride = (8, 8)
+        # padding = (8, 8)
+        # locations = ((10, 20),)
 
-        h = h.reshape(len(h))
+        # h = TextureFeatureDetector.hog.compute(coin_image, winStride, padding, locations)
+        # h = h.reshape(len(h))
 
-        return h
+        # probamo z skimage
+        # http://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.hog
+        gray = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
+        # (hog, hogImage) = feature.hog(gray, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2), block_norm='L2-Hys', transform_sqrt=True, visualise=True)
+        hog = feature.hog(gray, orientations=9, pixels_per_cell=(32, 32), cells_per_block=(2, 2), block_norm='L2-Hys', transform_sqrt=True, visualise=False)
+        # hogImage = exposure.rescale_intensity(hogImage, out_range=(0, 255))
+        # hogImage = hogImage.astype("uint8")
+
+        # util.show_image(hogImage, "HOG image")
+        # print(hog.shape)
+        # print(h.shape)
+
+        return hog.astype('float32')

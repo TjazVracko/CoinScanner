@@ -4,7 +4,7 @@ import numpy as np
 from skimage.transform import hough_circle, hough_circle_peaks
 from skimage import img_as_float
 import copy
-from util import show_image
+from util import show_image, COIN_IMG_SIZE
 from profiler import profile
 
 np.set_printoptions(threshold=np.nan)
@@ -145,7 +145,7 @@ def get_coin_segments(img):
     # izločimo vse kroge, ki so za nek faktor večjo od tega "ziher" kovanca
 
     # izrežemo vsak krog v svojo sliko
-    NEW_SIZE = 200
+    NEW_SIZE = COIN_IMG_SIZE
     potential_coins = []
     for a, x, y, r in circles:
         c = img[y - r:y + r, x - r:x + r, :].copy()

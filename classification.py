@@ -4,18 +4,20 @@ from profiler import profile
 import glob
 import cv2
 import numpy as np
+import util
+import pickle
 
 
 class Classificator:
 
-    learning_images_base_path = '/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/ucenje_2/'
+    learning_images_base_path = '/home/comemaster/Documents/Projects/Diploma/EdgeDetect/slike/ucenje_3/'
     learning_images_folder = {'1c': '_1c', '2c': '_2c', '5c': '_5c', '10c': '_10c', '20c': '_20c', '50c': '_50c', '1e': '_1e', '2e': '_2e'}
     coin_values = ('1c', '2c', '5c', '10c', '20c', '50c', '1e', '2e')
     coin_value_string_to_int = {'1c': 0, '2c': 1, '5c': 2, '10c': 3, '20c': 4, '50c': 5, '1e': 6, '2e': 7}
     coin_value_int_to_string = dict((v, k) for k, v in coin_value_string_to_int.items())  # menja key in value od zgoraj
     color_groups = ('bron', 'zlato', '1e', '2e')
 
-    BOW_VOCABULARY_SIZE = 64
+    BOW_VOCABULARY_SIZE = 128  # 128
 
     def __init__(self):
         self.color_knowledge = {}
@@ -32,7 +34,7 @@ class Classificator:
         fs.write("vocabulary", voc)
         fs.release()
 
-    def set_bow_from_file(self):
+    def load_bow_from_file(self):
         fs = cv2.FileStorage('vocab.yml', flags=cv2.FileStorage_READ)
         vocabulary = fs.getNode('vocabulary').mat()
         fs.release()
@@ -44,11 +46,25 @@ class Classificator:
         self.bow_descriptor_extractor = cv2.BOWImgDescriptorExtractor(TextureFeatureDetector.sift, matcher)
         self.bow_descriptor_extractor.setVocabulary(vocabulary)
 
-        print("BOW VOCAB SET FROM FILE")
-        self.init_and_train_SIFT_BOW_SVM()
+        # print("BOW VOCAB SET FROM FILE")
+        # self.init_and_train_SIFT_BOW_SVM()
+
+    def save_color_knowledge(self, ck):
+        with open('color_knowledge.pickle', 'wb') as f:
+            pickle.dump(ck, f)
+
+    def load_color_knowledge_from_file(self):
+        with open('color_knowledge.pickle', 'rb') as f:
+            self.color_knowledge = pickle.load(f)
+
+        # združimo barvne skupine
+        self.color_group_knowledge['bron'] = (self.color_knowledge['1c'] + self.color_knowledge['2c'] + self.color_knowledge['5c']) / 3
+        self.color_group_knowledge['zlato'] = (self.color_knowledge['10c'] + self.color_knowledge['20c'] + self.color_knowledge['50c']) / 3
+        self.color_group_knowledge['1e'] = self.color_knowledge['1e']
+        self.color_group_knowledge['2e'] = self.color_knowledge['2e']
 
     @profile
-    def learn_bow(self):
+    def learn_sift_bow(self):
         print("Training BOW")
         bowTrainer = cv2.BOWKMeansTrainer(Classificator.BOW_VOCABULARY_SIZE)
 
@@ -142,22 +158,67 @@ class Classificator:
         # tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
         # svm.train(tdata)
         svm.trainAuto(samples, cv2.ml.ROW_SAMPLE, labels)
-        # svm.save('svm_data.dat')
+        svm.save('svm_sift_data.dat')
 
         self.sift_bow_svm = svm
 
         print("DONE Training SIFT BOW SVM")
 
     @profile
-    def learn(self):
+    def learn_color(self):
         '''
-        Vzameš vsak set kovancev in zračunaš potrebne podatke za vektor
+        Vzame kovance iz baze in zračuna barvne karakteristike za psamezne barvne skupine
         '''
+        print("INIT COLOR")
         all_color_chars = {}
+        for coin_value, folder_name in self.learning_images_folder.items():
+            all_color_chars[coin_value] = []
+
+            dirname = self.learning_images_base_path + folder_name
+            # loop over all images
+            extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
+            list_e = []
+            for extension in extensions:
+                list_e.extend(glob.glob(dirname + "/"+extension))
+            list_e.sort()
+
+            # vsak kovanec enega tipa
+            for filename in list_e:
+                img = cv2.imread(filename)
+
+                # color_chars = ColorFeatureDetector.get_color_characteristics(img)
+                # color_chars = ColorFeatureDetector.get_color_histograms(img)
+                # color_chars = ColorFeatureDetector.get_2d_color_histograms_lab(img)
+                color_chars = ColorFeatureDetector.get_2d_color_histograms_hsv(img)
+                all_color_chars[coin_value].append(color_chars)
+
+        # imamo histograme barv za vsak kovanec, zračunamo povprečje teh čez vse kovance
+        for coin_value, color_chars in all_color_chars.items():
+            cc = np.array(color_chars)
+            avg_color_of_coins = np.mean(cc, axis=0)
+            # shranimo
+            self.color_knowledge[coin_value] = avg_color_of_coins
+
+        # združimo barvne skupine
+        self.color_group_knowledge['bron'] = (self.color_knowledge['1c'] + self.color_knowledge['2c'] + self.color_knowledge['5c']) / 3
+        self.color_group_knowledge['zlato'] = (self.color_knowledge['10c'] + self.color_knowledge['20c'] + self.color_knowledge['50c']) / 3
+        self.color_group_knowledge['1e'] = self.color_knowledge['1e']
+        self.color_group_knowledge['2e'] = self.color_knowledge['2e']
+
+        # shranimo
+        self.save_color_knowledge(self.color_knowledge)
+
+        print("DONE INIT COLOR")
+
+    @profile
+    def learn_hog(self):
+        '''
+        Vzame kovance iz baze in zračuna hog karakteristike za njih, nato natrenira SVM s temi podatki
+        '''
+        print("INIT HOG")
         all_texture_chars = {}
         # čez vse kovance
         for coin_value, folder_name in self.learning_images_folder.items():
-            all_color_chars[coin_value] = []
             all_texture_chars[coin_value] = []
 
             dirname = self.learning_images_base_path + folder_name
@@ -172,42 +233,16 @@ class Classificator:
             for filename in list_e:
                 img = cv2.imread(filename)
 
-                # barva
-                # color_chars = ColorFeatureDetector.get_color_characteristics(img)
-                # color_chars = ColorFeatureDetector.get_color_histograms(img)
-                # color_chars = ColorFeatureDetector.get_2d_color_histograms_lab(img)
-                color_chars = ColorFeatureDetector.get_2d_color_histograms_hsv(img)
-                all_color_chars[coin_value].append(color_chars)
-
-                # tekstura
                 # kp, des = TextureFeatureDetector.get_texture_characteristics_orb(img)
                 # # če je manj značilnic od neke vrednosti, zavržemo
                 # if hasattr(des, '__len__') and len(des) > 50:
                 #     all_texture_chars[coin_value].append((kp, des))
-                hog_des = TextureFeatureDetector.get_texture_characteristics_hog(img)
-                all_texture_chars[coin_value].append(hog_des)
+                # ker hog ni rotacijsko invarianten, rotirajmo to sliko:
+                rotated_images = self.get_rotated_images(img)
+                for ri in rotated_images:
+                    hog_des = TextureFeatureDetector.get_texture_characteristics_hog(ri)
+                    all_texture_chars[coin_value].append(hog_des)
 
-        # imamo histograme barv za vsak kovanec, zračunamo povprečje teh čez vse kovance
-        for coin_value, color_chars in all_color_chars.items():
-            cc = np.array(color_chars)
-            avg_color_of_coins = np.mean(cc, axis=0)
-
-            print("COIN: " + coin_value)
-            print("COLOR CHARS SHAPE:" + str(avg_color_of_coins.shape))
-            # draw_4_hist(avg_color_of_coins, np.arange(257))
-            # draw_2d_hist(avg_color_of_coins[0])
-            # draw_2d_hist(avg_color_of_coins[1])
-
-            # shranimo
-            self.color_knowledge[coin_value] = avg_color_of_coins
-
-        # združimo barvne skupine
-        self.color_group_knowledge['bron'] = (self.color_knowledge['1c'] + self.color_knowledge['2c'] + self.color_knowledge['5c']) / 3
-        self.color_group_knowledge['zlato'] = (self.color_knowledge['10c'] + self.color_knowledge['20c'] + self.color_knowledge['50c']) / 3
-        self.color_group_knowledge['1e'] = self.color_knowledge['1e']
-        self.color_group_knowledge['2e'] = self.color_knowledge['2e']
-
-        # teksture
         for coin_value, tex_chars in all_texture_chars.items():
             tex_chars = np.array(tex_chars)
             # shranimo
@@ -216,6 +251,18 @@ class Classificator:
 
         # init and train svm
         self.init_and_train_HOG_SVM()
+
+    def get_rotated_images(self, img):
+        out = []
+        rotation_step = 360
+        cols = rows = util.COIN_IMG_SIZE
+        for i in range(0, 360, rotation_step):
+            M = cv2.getRotationMatrix2D((cols/2, rows/2), i, 1)
+            dst = cv2.warpAffine(img, M, (cols, rows))
+            # util.show_image(dst)
+            out.append(dst)
+
+        return out
 
     def init_and_train_HOG_SVM(self):
         # https://stackoverflow.com/questions/37715160/how-do-i-train-an-svm-classifier-using-hog-features-in-opencv-3-0-in-python
@@ -228,7 +275,7 @@ class Classificator:
                 samples.append(tc)
                 labels.append(self.coin_value_string_to_int[coin_value])
 
-        print("INIT SVM")
+        print("INIT HOG SVM")
 
         # Convert objects to Numpy Objects
         samples = np.array(samples, dtype='float32')
@@ -246,7 +293,7 @@ class Classificator:
         # Create SVM
         svm = cv2.ml.SVM_create()
         svm.setType(cv2.ml.SVM_C_SVC)
-        svm.setKernel(cv2.ml.SVM_RBF)  # cv2.ml.SVM_LINEAR
+        svm.setKernel(cv2.ml.SVM_INTER)  # cv2.ml.SVM_LINEAR  cv2.ml.SVM_RBF
         # svm.setDegree(0.0)
         # svm.setGamma(5.383)
         # svm.setCoef0(0.0)
@@ -259,9 +306,17 @@ class Classificator:
         # tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
         # svm.train(tdata)
         svm.trainAuto(samples, cv2.ml.ROW_SAMPLE, labels)
-        # svm.save('svm_data.dat')
+        svm.save('svm_hog_data.dat')
+
+        print("DONE INIT HOG SVM")
 
         self.hog_svm = svm
+
+    def load_hog_svm(self):
+        self.hog_svm = cv2.ml.SVM_load('svm_hog_data.dat')
+
+    def load_sift_svm(self):
+        self.sift_bow_svm = cv2.ml.SVM_load('svm_sift_data.dat')
 
     def classify_by_texture_sift_bow(self, coin):
         '''
@@ -274,11 +329,11 @@ class Classificator:
         tex_des = self.bow_descriptor_extractor.compute(img, kp)
 
         # tex_des = tex_des.reshape(-1, len(tex_des))
-        print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
         # use SVM
         result = self.sift_bow_svm.predict(tex_des)
 
-        print(result)
+        # print(result)
         chosenclass = result[1][0][0]
         # print("SIFT TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
 
@@ -292,11 +347,11 @@ class Classificator:
         # get tex features from coin
         tex_des = TextureFeatureDetector.get_texture_characteristics_hog(coin)
         tex_des = tex_des.reshape(-1, len(tex_des))
-        print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
         # use SVM
         result = self.hog_svm.predict(tex_des)
 
-        print(result)
+        # print(result)
         chosenclass = result[1][0][0]
         # print("HOG TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
 
@@ -311,7 +366,7 @@ class Classificator:
         out_class = []
         # color_char_of_coin = ColorFeatureDetector.get_2d_color_histograms_lab(coin)
         color_char_of_coin = ColorFeatureDetector.get_2d_color_histograms_hsv(coin)
-        print("NEW COIN:")
+        # print("NEW COIN:")
 
         # print("KNOWLEDGE: \n" + str(self.color_knowledge))
 
@@ -344,12 +399,12 @@ class Classificator:
             distance_edge = ColorFeatureDetector.histogram_2d_compare(coin_knowledge[0], color_char_of_coin[0])
             distance_inside = ColorFeatureDetector.histogram_2d_compare(coin_knowledge[1], color_char_of_coin[1])
 
-            print("COIN: " + coin_value)
+            # print("COIN: " + coin_value)
             # print("DIFF COL: " + str(diff_color_edge) + "\n" + str(diff_color_inside))
             # print("DIFF STD: " + str(diff_std_edge) + "\n" + str(diff_std_inside))
             # print("DIFF STD: " + str(diff_std))
             # print("PODOBNOST HISTOGRAMOV: \n" + str(d_a_edge) + "  " + str(d_b_edge) + " " + str(d_a_inside) + " " + str(d_b_inside))
-            print("PODOBNOST HISTOGRAMOV: ", distance_edge, "   ", distance_inside)
+            # print("PODOBNOST HISTOGRAMOV: ", distance_edge, "   ", distance_inside)
 
             # show graph
             # draw_hist_comparison(coin_knowledge, color_char_of_coin, bins)

@@ -4,6 +4,8 @@ import uuid
 from profiler import print_prof_data
 import matplotlib.pyplot as plt
 
+COIN_IMG_SIZE = 256
+
 
 def draw_hist(hist, bins):
     width = 0.7 * (bins[1] - bins[0])

@@ -8,6 +8,7 @@ from skimage import feature, exposure
 class TextureFeatureDetector:
 
     sift = cv2.xfeatures2d.SIFT_create(nfeatures=500)
+    surf = cv2.xfeatures2d.SURF_create(hessianThreshold=400)
     orb = cv2.ORB_create(nfeatures=500)
     # HOG
     winSize = (64, 64)
@@ -26,7 +27,7 @@ class TextureFeatureDetector:
     @staticmethod
     def get_texture_characteristics_sift(coin_image):
         '''
-        Return SIFT  keypoints and descriptors
+        Return SIFT keypoints and descriptors
         '''
 
         gray = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
@@ -39,9 +40,23 @@ class TextureFeatureDetector:
         return kp, des
 
     @staticmethod
+    def get_texture_characteristics_surf(coin_image):
+        '''
+        Returns SURF keypoints and descriptors
+        '''
+        gray = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
+
+        kp, des = TextureFeatureDetector.surf.detectAndCompute(gray, None)
+
+        # img = cv2.drawKeypoints(gray, kp, None, (255, 0, 0), 4)
+        # util.show_image(img)
+
+        return kp, des
+
+    @staticmethod
     def get_texture_characteristics_orb(coin_image):
         '''
-        Return ORB  keypoints and descriptors
+        Return ORB keypoints and descriptors
         '''
         # kp = orb.detect(coin_image, None)
         # img = cv2.drawKeypoints(coin_image, kp, coin_image, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
@@ -52,10 +67,9 @@ class TextureFeatureDetector:
         return kp, des
 
     @staticmethod
-    def get_texture_characteristics_hog(coin_image):
+    def get_texture_characteristics_hog(coin_image, pixels_per_cell=(32, 32), cells_per_block=(2, 2), to_gray=True):  # 64 64, 2 2 pri skupnem
         '''
         Returns HOG histogram of the coin image
-        TODO: hog ima tudi nastavitve, preveri:
         https://stackoverflow.com/questions/28390614/opencv-hogdescripter-python
         '''
 
@@ -66,16 +80,18 @@ class TextureFeatureDetector:
         # h = TextureFeatureDetector.hog.compute(coin_image, winStride, padding, locations)
         # h = h.reshape(len(h))
 
+        # print(h.shape)
+
         # probamo z skimage
         # http://scikit-image.org/docs/dev/api/skimage.feature.html#skimage.feature.hog
-        gray = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
+        if to_gray:
+            coin_image = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
         # (hog, hogImage) = feature.hog(gray, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2), block_norm='L2-Hys', transform_sqrt=True, visualise=True)
-        hog = feature.hog(gray, orientations=9, pixels_per_cell=(32, 32), cells_per_block=(2, 2), block_norm='L2-Hys', transform_sqrt=True, visualise=False)
+        hog = feature.hog(coin_image, orientations=9, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block, block_norm='L2-Hys', transform_sqrt=True, visualise=False)
         # hogImage = exposure.rescale_intensity(hogImage, out_range=(0, 255))
         # hogImage = hogImage.astype("uint8")
 
         # util.show_image(hogImage, "HOG image")
         # print(hog.shape)
-        # print(h.shape)
 
         return hog.astype('float32')

@@ -1,0 +1,65 @@
+ponedeljek 15 januar, misli za torek, kaj bi naredil:
+Jaz bi vzel combo SVM in mogoče še simple HOG (ker je ta natreniran na 1764 vlkih hog histogramih, napram samo 324 v combotu)
+pol pa skupaj z barvo določimo kateri razredi so možni.
+
+Će je na sliki 1e ali 2e, začnimo z njimi, drugače pa pač kaj maš
+in greš primerjat po velikosti še ostale.
+
+Torej kovanec x je baje 5c, primerjaš po velikosti z izbranim kovancem, in zapišeš razliko glede na znano razmerje
+to pol ponavljaš za vse konvance.
+
+Nato vzameš enega drugega za "izbranega" (base coin), in spet vse primerjaš
+
+Tako poiščeš tisto kombinacijo, ko bojo odstopanja najmanjša, in smatraš tiste classe za pravilne (jih outputaš)
+
+
+
+
+
+
+
+
+
+DIAMETER:
+ 2e: 25.75 mm
+ 1e: 23.25 mm
+50c: 24.25 mm
+20c: 22.25 mm
+10c: 19.75 mm
+ 5c: 21.25 mm
+ 2c: 18.75 mm
+ 1c: 16.25 mm
+
+
+[[1.0000000000000000, 0.8666666666666667, 0.8227848101265823, 0.7647058823529411, 0.7303370786516854, 0.6989247311827957, 0.6701030927835051, 0.6310679611650486], 
+ [1.1538461538461537, 1.0000000000000000, 0.9493670886075949, 0.8823529411764706, 0.8426966292134831, 0.8064516129032258, 0.7731958762886598, 0.7281553398058253], 
+ [1.2153846153846153, 1.0533333333333332, 1.0000000000000000, 0.9294117647058824, 0.8876404494382022, 0.8494623655913979, 0.8144329896907216, 0.7669902912621359], 
+ [1.3076923076923077, 1.1333333333333333, 1.0759493670886076, 1.0000000000000000, 0.9550561797752809, 0.9139784946236559, 0.8762886597938144, 0.8252427184466019], 
+ [1.3692307692307693, 1.1866666666666668, 1.1265822784810127, 1.0470588235294118, 1.0000000000000000, 0.9569892473118280, 0.9175257731958762, 0.8640776699029126], 
+ [1.4307692307692308, 1.2400000000000000, 1.1772151898734178, 1.0941176470588236, 1.0449438202247192, 1.0000000000000000, 0.9587628865979382, 0.9029126213592233], 
+ [1.4923076923076923, 1.2933333333333332, 1.2278481012658229, 1.1411764705882352, 1.0898876404494382, 1.0430107526881720, 1.0000000000000000, 0.9417475728155340], 
+ [1.5846153846153845, 1.3733333333333333, 1.3037974683544304, 1.2117647058823529, 1.1573033707865168, 1.1075268817204300, 1.0618556701030928, 1.0000000000000000]]
+
+
+
+POTEK:
+vzameš en krog, primerjaš njegov radius z vsemi krogi.
+Dobiš listo števil (razmerij velikosti)
+
+sortiraš najmanj do največ
+
+odstraniš duplikate oz. dovolj podobne cifre.
+
+MOGOČE odstraniš prevelike in premale cifre (glede na znanje iz tabele)
+
+Nato pa probaš glede na pozicijo enke nekje najt v katero vrstico spada
+
+
+
+IDEJA:
+kovanci v tabeli naj nebojo po vrsti ampak naj bojo po velikosti, torej 1c 2c 10c 5c 20c 1e 50c 2e
+
+
+arraya alignaš po enkah, pol pa greš recimo v levo. razlika vrednosti pod neko mejo - ok, drugače gledaš še bolj levo če bi pasala. če ne paše nikjer zarvžeš. Če pa paše pa od tiste pozicije nadaljuješ.
+Podobno nato v desno. Če je vseh 8 kovancev na sliki mi moglo ostat 8 vrednosti. Drugače pa manj (jebejo nas ostali krogeci tho).
+

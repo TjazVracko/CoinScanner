@@ -21,8 +21,9 @@ class Classificator:
 
     color_groups = ('bron', 'zlato', '1e', '2e')
 
-    coin_diameters = [16.25, 18.75, 19.75, 21.25, 22.25, 23.25, 24.25, 25.75]
-    coin_diameter_order = ['1c', '2c', '10c', '5c', '20c', '1e', '50c', '2e']
+    coin_diameters = [16.25, 18.75, 21.25, 19.75, 22.25, 24.25, 23.25, 25.75]
+    # coin_size_order_string = ['1c', '2c', '5c', '10c', '20c', '50c', '1e', '2e']
+    # coin_size_order_int = [0, 1, 2, 3, 4, 5, 6, 7]
 
     BOW_VOCABULARY_SIZE = 128  # 128
 
@@ -41,6 +42,12 @@ class Classificator:
         self.sift_bow_ann = None
 
         self.coin_size_ratios = self.calculate_coin_size_ratios()
+
+    def calculate_coin_size_ratios(self):
+        cd = Classificator.coin_diameters
+        csr = [[cd[i] / cd[j] for j in range(8)] for i in range(8)]
+        # print(csr)
+        return csr
 
     def save_vocabulary(self, voc):
         fs = cv2.FileStorage('vocab.yml', flags=cv2.FileStorage_WRITE)
@@ -93,12 +100,6 @@ class Classificator:
     def load_combo_svm(self):
         self.combo_svm = cv2.ml.SVM_load('svm_combo_data.dat')
         print("COMBO SVM SET FROM FILE")
-
-    def calculate_coin_size_ratios(self):
-        cd = Classificator.coin_diameters
-        csr = [[cd[i] / cd[j] for j in range(8)] for i in range(8)]
-        # print(csr)
-        return csr
 
     @profile
     def learn_combo_svm(self):

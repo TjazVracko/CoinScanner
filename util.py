@@ -43,9 +43,9 @@ UTIL_YES = 0
 UTIL_NO = 0
 
 
-def show_image(img, title=""):
+def show_image(img, title="", size=(720, 720)):
     cv2.namedWindow(title, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(title, 720, 720)
+    cv2.resizeWindow(title, size[0], size[1])
 
     cv2.imshow(title, img)
     key = cv2.waitKey(0)

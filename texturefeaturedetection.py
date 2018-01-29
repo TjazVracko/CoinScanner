@@ -95,3 +95,15 @@ class TextureFeatureDetector:
         # print(hog.shape)
 
         return hog.astype('float32')
+
+    @staticmethod
+    def get_texture_characteristics_lbp(coin_image, points=24, raduis=8, to_gray="True"):
+        if to_gray:
+            coin_image = cv2.cvtColor(coin_image, cv2.COLOR_BGR2GRAY)
+
+        lbp = feature.local_binary_pattern(coin_image, points, raduis, method="uniform")
+        hist, bins = np.histogram(lbp, normed=True, bins=points + 2, range=(0, points + 2))
+
+        # util.draw_hist(hist, bins)
+
+        return hist.astype('float32')

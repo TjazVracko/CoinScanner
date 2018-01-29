@@ -30,16 +30,20 @@ class Classificator:
     def __init__(self):
         self.color_knowledge = {}
         self.color_group_knowledge = {}
-        self.texture_knowledge = {}
+
+        self.texture_knowledge_hog = {}
+        self.texture_knowledge_lbp = {}
 
         self.hog_svm = None
+
+        self.lbp_svm = None
 
         self.bow_descriptor_extractor = None
         self.sift_bow_svm = None
 
         self.combo_svm = None
 
-        self.sift_bow_ann = None
+        # self.sift_bow_ann = None
 
         self.coin_size_ratios = self.calculate_coin_size_ratios()
 
@@ -88,6 +92,10 @@ class Classificator:
     def load_hog_svm(self):
         self.hog_svm = cv2.ml.SVM_load('svm_hog_data.dat')
         print("HOG SVM SET FROM FILE")
+
+    def load_lbp_svm(self):
+        self.lbp_svm = cv2.ml.SVM_load('svm_lbp_data.dat')
+        print("LBP SVM SET FROM FILE")
 
     def load_sift_svm(self):
         self.sift_bow_svm = cv2.ml.SVM_load('svm_sift_data.dat')
@@ -277,79 +285,6 @@ class Classificator:
         print("DONE Training SIFT BOW SVM")
 
     @profile
-    def init_and_train_SIFT_BOW_ANN(self):
-        print("Training SIFT BOW ANN")
-
-        samples = []
-        labels = []
-
-        for coin_value, folder_name in self.learning_images_folder.items():
-            dirname = self.learning_images_base_path + folder_name
-            # loop over all images
-            extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
-            list_e = []
-            for extension in extensions:
-                list_e.extend(glob.glob(dirname + "/"+extension))
-
-            # vsak kovanec enega tipa
-            for filename in list_e:
-                img = cv2.imread(filename)
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-                rotated_images = self.get_rotated_images(img, step=360)
-                for ri in rotated_images:
-                    # extract descriptors with trained bow extractor
-                    kp = TextureFeatureDetector.sift.detect(ri, None)
-                    if hasattr(kp, '__len__'):
-                        des = self.bow_descriptor_extractor.compute(ri, kp)
-                        # print(len(des))
-                        samples.append(des)
-                        labels.append(self.coin_value_string_to_array[coin_value])
-
-        # Convert objects to Numpy Objects
-        samples = np.array(samples, dtype='float32')
-        samples = samples.reshape(-1, Classificator.BOW_VOCABULARY_SIZE)
-        labels = np.array(labels, dtype='float32')
-
-        print(samples.shape)
-        print(labels.shape)
-
-        # randomize order
-        rand = np.random.RandomState(321)
-        shuffle = rand.permutation(len(samples))
-        samples = samples[shuffle]
-        labels = labels[shuffle]
-
-        # create ann
-        ann = cv2.ml.ANN_MLP_create()
-
-        # ann.setTrainMethod(cv2.ml.ANN_MLP_RPROP | cv2.ml.ANN_MLP_UPDATE_WEIGHTS)
-        # ann.setLayerSizes(np.array([Classificator.BOW_VOCABULARY_SIZE, (Classificator.BOW_VOCABULARY_SIZE + 8) / 2, 8]))  # srednji layer je polovica vsote obeh, torej 128+8 / 2 = 68
-        # ann.setActivationFunction(cv2.ml.ANN_MLP_SIGMOID_SYM)
-        # ann.setTermCriteria((cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1))
-
-        ann.setLayerSizes(np.array([Classificator.BOW_VOCABULARY_SIZE, (Classificator.BOW_VOCABULARY_SIZE + 8) / 2, 8]))
-        ann.setTrainMethod(cv2.ml.ANN_MLP_RPROP)
-        # ann.setBackpropMomentumScale(0.0)
-        # ann.setBackpropWeightScale(0.001)
-        ann.setTermCriteria((cv2.TERM_CRITERIA_MAX_ITER | cv2.TermCriteria_EPS, 65536, 0.0001))
-        ann.setActivationFunction(cv2.ml.ANN_MLP_SIGMOID_SYM, 1, 1)
-
-        # train
-        # kolko epoh?
-        # EPOCH = 10
-        # for ep in range(0, EPOCH):
-        #     print("EPOCH ", ep)
-        #     ann.train(samples, cv2.ml.ROW_SAMPLE, labels)
-        ann.train(samples, cv2.ml.ROW_SAMPLE, labels)
-
-        ann.save("ann_sift_data.dat")
-
-        self.sift_bow_ann = ann
-
-        print("DONE Training SIFT BOW ANN")
-
-    @profile
     def learn_color(self):
         '''
         Vzame kovance iz baze in zračuna barvne karakteristike za psamezne barvne skupine
@@ -431,7 +366,7 @@ class Classificator:
         for coin_value, tex_chars in all_texture_chars.items():
             tex_chars = np.array(tex_chars)
             # shranimo
-            self.texture_knowledge[coin_value] = tex_chars
+            self.texture_knowledge_hog[coin_value] = tex_chars
             print((tex_chars.shape))
 
         # init and train svm
@@ -454,7 +389,7 @@ class Classificator:
         # pripravimo podatke
         samples = []
         labels = []
-        for coin_value, tex_chars in self.texture_knowledge.items():
+        for coin_value, tex_chars in self.texture_knowledge_hog.items():
             for tc in tex_chars:
                 samples.append(tc)
                 labels.append(self.coin_value_string_to_int[coin_value])
@@ -506,11 +441,13 @@ class Classificator:
         kp = TextureFeatureDetector.sift.detect(img, None)
         sift_des = self.bow_descriptor_extractor.compute(img, kp)
         sd = np.array(sift_des).flatten()
+        # print("COMBO SIFT: ", sd.shape)
         # še hog
         hog_des = TextureFeatureDetector.get_texture_characteristics_hog(img, pixels_per_cell=(64, 64), cells_per_block=(2, 2), to_gray=False)
-        # print(len(des))
+        # print("COMBO HOG: ", hog_des.shape)
         skup = np.append(sd, hog_des)
         skup = skup.reshape(-1, len(skup))
+        # print("COMBO SKUP: ", skup.shape)
         # use SVM
         result = self.combo_svm.predict(skup)
 
@@ -531,7 +468,7 @@ class Classificator:
         tex_des = self.bow_descriptor_extractor.compute(img, kp)
 
         # tex_des = tex_des.reshape(-1, len(tex_des))
-        # print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # print("SIFT BOW SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
         # use SVM
         result = self.sift_bow_svm.predict(tex_des)
 
@@ -541,27 +478,6 @@ class Classificator:
 
         return self.coin_value_int_to_string[int(chosenclass)]
 
-    def classify_by_texture_sift_bow_ann(self, coin):
-        '''
-        Uses ANN to find coin class via SIFT descriptors and BoW
-        '''
-
-        img = cv2.cvtColor(coin, cv2.COLOR_BGR2GRAY)
-        # extract descriptors with trained bow extractor
-        kp = TextureFeatureDetector.sift.detect(img, None)
-        tex_des = self.bow_descriptor_extractor.compute(img, kp)
-
-        # tex_des = tex_des.reshape(-1, len(tex_des))
-        # print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
-        # use SVM
-        ret, result = self.sift_bow_ann.predict(tex_des)
-
-        # print(result)
-        # chosenclass = result[1][0][0]
-        # print("SIFT TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
-        arg = np.argmax(result[0])
-        return Classificator.coin_value_int_to_string[int(arg)]
-
     def classify_by_texture_hog(self, coin):
         '''
         Uses SVM to find coin class via HOG descriptors
@@ -570,7 +486,7 @@ class Classificator:
         # get tex features from coin
         tex_des = TextureFeatureDetector.get_texture_characteristics_hog(coin)
         tex_des = tex_des.reshape(-1, len(tex_des))
-        # print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # print("HOG SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
         # use SVM
         result = self.hog_svm.predict(tex_des)
 
@@ -651,30 +567,206 @@ class Classificator:
         # print(str(out_class))
         out_class = sorted(out_class, key=lambda c: sum(c[1:]), reverse=True)
         return out_class[0][0]
+        # out = min(out_class, key=lambda c: sum(c[1:]))
+        # return out[0]
+    '''
+    UNUSED CODE
+    '''
+    def classify_by_texture_sift_bow_ann(self, coin):
+        '''
+        Uses ANN to find coin class via SIFT descriptors and BoW
+        '''
 
-    def classify_by_size(self, coin_radius, all_radii):
-        # vzameš en krog, primerjaš njegov radius z vsemi krogi.
-        ratios = [coin_radius / rad for rad in all_radii]
-        ratios = np.array(ratios)
-        # sortiraš najmanj do največ
-        ratios = np.sort(ratios)
+        img = cv2.cvtColor(coin, cv2.COLOR_BGR2GRAY)
+        # extract descriptors with trained bow extractor
+        kp = TextureFeatureDetector.sift.detect(img, None)
+        tex_des = self.bow_descriptor_extractor.compute(img, kp)
 
-        print(len(ratios))
-        print(ratios)
+        # tex_des = tex_des.reshape(-1, len(tex_des))
+        # print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # use SVM
+        ret, result = self.sift_bow_ann.predict(tex_des)
 
-        # odstranimo prevlke in premale cifre
-        smallest = np.min(self.coin_size_ratios)
-        biggest = np.max(self.coin_size_ratios)
-        indexes = [i for i, ratio in enumerate(ratios) if ratio < smallest - 0.02 or ratio > biggest + 0.02]
-        ratios = np.delete(ratios, indexes)
-        # odstraniš duplikate oz. dovolj podobne cifre.
-        unique_ratios = np.unique(ratios)
+        # print(result)
+        # chosenclass = result[1][0][0]
+        # print("SIFT TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
+        arg = np.argmax(result[0])
+        return Classificator.coin_value_int_to_string[int(arg)]
 
-        # flip order
-        unique_ratios = np.flip(unique_ratios, 0)
+    def classify_by_texture_lbp(self, coin):
+        '''
+        Uses SVM to find coin class via LBP descriptors
+        '''
 
-        print("UNIQUE")
-        print(len(unique_ratios))
-        print(unique_ratios)
+        # get tex features from coin
+        tex_des = TextureFeatureDetector.get_texture_characteristics_lbp(coin)
+        tex_des = tex_des.reshape(-1, len(tex_des))
+        # print("SHAPE:", tex_des.shape, " TYPE: ", tex_des.dtype)
+        # use SVM
+        result = self.lbp_svm.predict(tex_des)
 
-        return 'a'
+        # print(result)
+        chosenclass = result[1][0][0]
+        # print("HOG TALE JE : ", self.coin_value_int_to_string[int(chosenclass)])
+
+        return self.coin_value_int_to_string[int(chosenclass)]
+
+    @profile
+    def init_and_train_SIFT_BOW_ANN(self):
+        print("Training SIFT BOW ANN")
+
+        samples = []
+        labels = []
+
+        for coin_value, folder_name in self.learning_images_folder.items():
+            dirname = self.learning_images_base_path + folder_name
+            # loop over all images
+            extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
+            list_e = []
+            for extension in extensions:
+                list_e.extend(glob.glob(dirname + "/"+extension))
+
+            # vsak kovanec enega tipa
+            for filename in list_e:
+                img = cv2.imread(filename)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+                rotated_images = self.get_rotated_images(img, step=360)
+                for ri in rotated_images:
+                    # extract descriptors with trained bow extractor
+                    kp = TextureFeatureDetector.sift.detect(ri, None)
+                    if hasattr(kp, '__len__'):
+                        des = self.bow_descriptor_extractor.compute(ri, kp)
+                        # print(len(des))
+                        samples.append(des)
+                        labels.append(self.coin_value_string_to_array[coin_value])
+
+        # Convert objects to Numpy Objects
+        samples = np.array(samples, dtype='float32')
+        samples = samples.reshape(-1, Classificator.BOW_VOCABULARY_SIZE)
+        labels = np.array(labels, dtype='float32')
+
+        print(samples.shape)
+        print(labels.shape)
+
+        # randomize order
+        rand = np.random.RandomState(321)
+        shuffle = rand.permutation(len(samples))
+        samples = samples[shuffle]
+        labels = labels[shuffle]
+
+        # create ann
+        ann = cv2.ml.ANN_MLP_create()
+
+        # ann.setTrainMethod(cv2.ml.ANN_MLP_RPROP | cv2.ml.ANN_MLP_UPDATE_WEIGHTS)
+        # ann.setLayerSizes(np.array([Classificator.BOW_VOCABULARY_SIZE, (Classificator.BOW_VOCABULARY_SIZE + 8) / 2, 8]))  # srednji layer je polovica vsote obeh, torej 128+8 / 2 = 68
+        # ann.setActivationFunction(cv2.ml.ANN_MLP_SIGMOID_SYM)
+        # ann.setTermCriteria((cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1))
+
+        ann.setLayerSizes(np.array([Classificator.BOW_VOCABULARY_SIZE, (Classificator.BOW_VOCABULARY_SIZE + 8) / 2, 8]))
+        ann.setTrainMethod(cv2.ml.ANN_MLP_RPROP)
+        # ann.setBackpropMomentumScale(0.0)
+        # ann.setBackpropWeightScale(0.001)
+        ann.setTermCriteria((cv2.TERM_CRITERIA_MAX_ITER | cv2.TermCriteria_EPS, 65536, 0.0001))
+        ann.setActivationFunction(cv2.ml.ANN_MLP_SIGMOID_SYM, 1, 1)
+
+        # train
+        # kolko epoh?
+        # EPOCH = 10
+        # for ep in range(0, EPOCH):
+        #     print("EPOCH ", ep)
+        #     ann.train(samples, cv2.ml.ROW_SAMPLE, labels)
+        ann.train(samples, cv2.ml.ROW_SAMPLE, labels)
+
+        ann.save("ann_sift_data.dat")
+
+        self.sift_bow_ann = ann
+
+        print("DONE Training SIFT BOW ANN")
+
+    @profile
+    def learn_lbp(self):
+        '''
+        Vzame kovance iz baze in zračuna hog karakteristike za njih, nato natrenira SVM s temi podatki
+        '''
+        print("INIT LBP")
+        all_texture_chars = {}
+        # čez vse kovance
+        for coin_value, folder_name in self.learning_images_folder.items():
+            all_texture_chars[coin_value] = []
+
+            dirname = self.learning_images_base_path + folder_name
+            # loop over all images
+            extensions = ("*.png", "*.jpg", "*.jpeg", "*.JPG")
+            list_e = []
+            for extension in extensions:
+                list_e.extend(glob.glob(dirname + "/"+extension))
+            list_e.sort()
+
+            # vsak kovanec enega tipa
+            for filename in list_e:
+                img = cv2.imread(filename)
+
+                # kp, des = TextureFeatureDetector.get_texture_characteristics_orb(img)
+                # # če je manj značilnic od neke vrednosti, zavržemo
+                # if hasattr(des, '__len__') and len(des) > 50:
+                #     all_texture_chars[coin_value].append((kp, des))
+                # ker hog ni rotacijsko invarianten, rotirajmo to sliko:
+                rotated_images = self.get_rotated_images(img, step=360)
+                for ri in rotated_images:
+                    lbp_des = TextureFeatureDetector.get_texture_characteristics_lbp(ri)
+                    all_texture_chars[coin_value].append(lbp_des)
+
+        for coin_value, tex_chars in all_texture_chars.items():
+            tex_chars = np.array(tex_chars)
+            # shranimo
+            self.texture_knowledge_lbp[coin_value] = tex_chars
+            print((tex_chars.shape))
+
+        # init and train svm
+        self.init_and_train_LBP_SVM()
+
+    def init_and_train_LBP_SVM(self):
+        samples = []
+        labels = []
+        for coin_value, tex_chars in self.texture_knowledge_lbp.items():
+            for tc in tex_chars:
+                samples.append(tc)
+                labels.append(self.coin_value_string_to_int[coin_value])
+
+        print("INIT LBP SVM")
+
+        # Convert objects to Numpy Objects
+        samples = np.array(samples, dtype='float32')
+        labels = np.array(labels)
+
+        print(samples.shape)
+        print(labels.shape)
+
+        # randomize order
+        rand = np.random.RandomState(321)
+        shuffle = rand.permutation(len(samples))
+        samples = samples[shuffle]
+        labels = labels[shuffle]
+
+        # Create SVM
+        svm = cv2.ml.SVM_create()
+        svm.setType(cv2.ml.SVM_C_SVC)
+        svm.setKernel(cv2.ml.SVM_INTER)  # cv2.ml.SVM_LINEAR  cv2.ml.SVM_RBF
+        # svm.setDegree(0.0)
+        # svm.setGamma(5.383)
+        # svm.setCoef0(0.0)
+        # svm.setC(2.67)
+        # svm.setNu(0.0)
+        # svm.setP(0.0)
+        # svm.setClassWeights(None)
+
+        # Train
+        # tdata = cv2.ml.TrainData_create(samples, cv2.ml.ROW_SAMPLE, labels)
+        # svm.train(tdata)
+        svm.trainAuto(samples, cv2.ml.ROW_SAMPLE, labels)
+        svm.save('svm_lbp_data.dat')
+
+        print("DONE INIT LBP SVM")
+
+        self.lbp_svm = svm

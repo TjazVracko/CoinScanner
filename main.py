@@ -26,8 +26,8 @@ if __name__ == '__main__':
     list_e = []
     for extension in extensions:
         list_e.extend(glob.glob(dirname + "/"+extension))
-    # list_e.sort()  # da bo po abecedi
-    random.shuffle(list_e)
+    list_e.sort()  # da bo po abecedi
+    # random.shuffle(list_e)
 
     # init feature detection
     csf = Classificator()
@@ -44,7 +44,7 @@ if __name__ == '__main__':
         csf.load_combo_svm()
         # csf.learn_combo_svm()
 
-        csf.load_sift_ann()
+        # csf.load_sift_ann()
         # csf.init_and_train_SIFT_BOW_ANN()
     else:
         csf.learn_color()
@@ -58,11 +58,12 @@ if __name__ == '__main__':
 
         csf.learn_combo_svm()
 
-        csf.init_and_train_SIFT_BOW_ANN()
+        # csf.init_and_train_SIFT_BOW_ANN()
 
     print_prof_data()
 
     for filename in list_e:
+        print("NEW IMG: ", filename)
         # read image
         img = cv2.imread(filename)
         # show_image(img, "original")
@@ -96,15 +97,15 @@ if __name__ == '__main__':
             tex_coin_class_hog = csf.classify_by_texture_hog(im)
             tex_coin_class_sift = csf.classify_by_texture_sift_bow(im)
 
-            # print("PO HOG: ", tex_coin_class_hog)
+            # print("PO HOG : ", tex_coin_class_hog)
             # print("PO SIFT: ", tex_coin_class_sift)
 
-            # combo test
+            # combo
             tex_coin_class_combo = csf.classify_by_texture_combo(im)
             # print("PO COMBO: ", tex_coin_class_combo)
 
-            # ann
-            tex_coin_class_ann = csf.classify_by_texture_sift_bow_ann(im)
+            # ann NE NUCAMO
+            # tex_coin_class_ann = csf.classify_by_texture_sift_bow_ann(im)
             # print("PO ANN: ", tex_coin_class_ann)
 
             # združi rezultate v skupni count
@@ -123,17 +124,17 @@ if __name__ == '__main__':
             co[Classificator.coin_value_string_to_int[tex_coin_class_hog]] += 1
             co[Classificator.coin_value_string_to_int[tex_coin_class_sift]] += 1
             co[Classificator.coin_value_string_to_int[tex_coin_class_combo]] += 1
-            co[Classificator.coin_value_string_to_int[tex_coin_class_ann]] += 1
+            # co[Classificator.coin_value_string_to_int[tex_coin_class_ann]] += 1
 
             # print("SKUP:\n", co)
 
             # začasno, največji score je ta pravi, damo gor
-            coin_class = "None"
+            coin_class = "/"
             if coin_type_color is not None:
                 ind = np.argmax(co)
                 coin_class = Classificator.coin_value_int_to_string[ind]
                 if coin_type_color == "1e" and coin_class != "1e":
-                    coin_class = "None"
+                    coin_class = "/"
 
             coin_outputs.append((im, x, y, r, coin_type_color, co, coin_class))
 
@@ -145,8 +146,8 @@ if __name__ == '__main__':
         # imamo "odgovore" za vsak kovanec na sliki. Zaj lahko še preverimo s pomočjo velikosti
         # kovance sortiramo po skupnih odgovorih (če jih je več blo za en class je verjetno tisti a ne)
         sorted_coin_outputs = sorted(coin_outputs, key=lambda c: max(c[5]), reverse=True)  # sort po najbolj možni na začetku
-        print(len(sorted_coin_outputs))
-        # izločimo tiste, ko je barva prazna
+        print("TOTAL CIRCLES: ", len(sorted_coin_outputs))
+        # izločimo tiste, kjer je barvni klasifikator vrnil prazno
         trunc_coin_outputs = [x for x in sorted_coin_outputs if max(x[5]) >= 5]
 
         results_for_each_coin = []
@@ -155,6 +156,7 @@ if __name__ == '__main__':
             radius_compare = co[3]
             coin_class_compare = np.argmax(co[5])  # kateri kovanec je, z nekim radiusom
             ratios_compare = csf.coin_size_ratios[coin_class_compare]  # ratios tega kovanca (glede na druge)
+
             results_for_current_coin = []
             sum_for_current_coin = 0
             for i in range(0, len(trunc_coin_outputs)):
@@ -162,10 +164,10 @@ if __name__ == '__main__':
                 #     continue
                 other_coin_radius = trunc_coin_outputs[i][3]
                 # v coin size ratio tabeli pogledaj v vrstico izbranega kovanca
-                # kateri ratio je najbližji temu zdaj zračunanemu. To je pol ta coin.  zapišeš keri coin in razlika ratiotov
+                # kateri ratio je najbližji temu zdaj zračunanemu. To je pol ta coin. Zapišeš keri coin in razlika ratiotov
                 ratio = radius_compare / other_coin_radius
                 diff = np.absolute(np.array(ratios_compare) - np.array([ratio]*8))
-                # TODO: kaj če bi dovolili primerjati samo znotraj barvnega razreda??
+                # kaj če bi dovolili primerjati samo znotraj barvnega razreda??
                 # razlike zunaj barvnega razreda nas ne zanimajo
                 cts = trunc_coin_outputs[i][6]
                 to_add = [10]*8
@@ -183,7 +185,7 @@ if __name__ == '__main__':
                 min_index = np.argmin(diff)
                 min_diff_coin = Classificator.coin_value_int_to_string[min_index]
 
-                results_for_current_coin.append((min_diff_coin, i, diff[min_index]))
+                results_for_current_coin.append((min_diff_coin, i, diff[min_index], ratio))
                 sum_for_current_coin += diff[min_index]
 
             # shranimo rezultate za ta coin
@@ -195,16 +197,51 @@ if __name__ == '__main__':
         # print(results_for_each_coin)
 
         best_entry = min(results_for_each_coin, key=lambda c: c[0][2])  # suma po razlikah ratiotov, vzameš tistega z najmanjšo sumo
-        print("NAJMANJŠA SUMA\n", best_entry)
-        for coin_string, ind, diff in best_entry[1]:
+        # print("BEST ENTRY\n", best_entry)
+        for coin_string, ind, diff, ratio in best_entry[1]:
             if diff <= 0.06:
                 # če je diff dovolj mali spremenimo razred kovanca
-                im, x, y, r, coin_type_color, co, cc = sorted_coin_outputs[ind]  # cc se discarda oz zamenja z coin_string, sotalo ostane
+                im, x, y, r, coin_type_color, co, cc = sorted_coin_outputs[ind]  # cc se discarda oz zamenja z coin_string, ostalo ostane
                 sorted_coin_outputs[ind] = (im, x, y, r, coin_type_color, co, coin_string)
+            # če je razlika prevelika, verjetno sploh ni ta kovanec
+            if diff > 0.14:
+                # TODO: TEST this
+                # ziher ni tale coin, razn če je krog zlo narobe
+                im, x, y, r, coin_type_color, co, cc = sorted_coin_outputs[ind]
+                sorted_coin_outputs[ind] = (im, x, y, r, coin_type_color, co, "//")
+            # pri 1e smo bolj striktni, ker se pogosto pojavi namesto praznega
+            if (coin_string == "1e" or coin_string == "10c") and diff >= 0.07:
+                im, x, y, r, coin_type_color, co, cc = sorted_coin_outputs[ind]
+                sorted_coin_outputs[ind] = (im, x, y, r, coin_type_color, co, "\\\\")
+
+        # # TODO: zdaj ostanejo kao samo kovanci. Pogledamo kateri so enake velikosti, in znotraj njih pogledamo najbolj pogosto klasifikacijo po barvi/teksturi
+        # # spremenimo razred vseh na tale (najbolj pogost) razred
+        # # To bi naj izboljšalo primer, ko so sami enaki kovanci gor
+
+        # # vzamemo vse enake velikosti kot izbrani
+        # # med 0.96 in 1.04
+        # indexes = []
+        # for coin_string, ind, diff, ratio in best_entry[1]:
+        #     if 0.96 < ratio < 1.04:
+        #         indexes.append(ind)
+
+        # # pogledamo katerega razreda (glede na barvo/texturo, ne pa po velikosti) so in akumuliramo
+        # acum = [0]*8
+        # for i in indexes:
+        #     cclass = np.argmax(sorted_coin_outputs[i][5])
+        #     acum[cclass] += 1
+
+        # # katerega je največ?
+        # most_common_ind = np.argmax(acum)
+        # most_common_str = Classificator.coin_value_int_to_string[most_common_ind]
+        # print("NAJVEČ SO REKLI DA JE: ", most_common_str)
+        # print(acum)
+
+        # # spremenimo vse na to? NE, ker so slabi rezultati
 
         # print img
         for ind, (im, x, y, r, coin_type_color, co, coin_class) in enumerate(sorted_coin_outputs):
-            cv2.putText(img_out, coin_class + "," + str(ind), (x - r - 5, y), cv2.FONT_HERSHEY_SIMPLEX, 4, (128, 255, 0), thickness=2)
+            cv2.putText(img_out, coin_class, (x - r - 5, y), cv2.FONT_HERSHEY_SIMPLEX, 4, (128, 255, 0), thickness=2)
 
         chosen_index = best_entry[0][1]
         chosen = sorted_coin_outputs[chosen_index]
@@ -216,6 +253,6 @@ if __name__ == '__main__':
 
         img_skup = np.hstack((image_with_circles, img_out))
 
-        show_image(img_skup, "levo po klasifikaciji, desno po cekiranju velikosti", size=(2048, 1024))
+        show_image(img_skup, "levo po klasifikaciji, desno po cekiranju velikosti: " + filename, size=(1500, 750))
 
     print_prof_data()
